@@ -12,10 +12,14 @@ function requestNotificationPermission() {
   }
 }
 
-// 브라우저 알림 발송
-function sendBrowserNotification(title, body) {
+// 브라우저 알림 발송 (클릭 시 해당 페이지 이동)
+function sendBrowserNotification(title, body, url = '/') {
   if ('Notification' in window && Notification.permission === 'granted') {
-    new Notification(title, { body, icon: '/icons/icon-192.png' });
+    const n = new Notification(title, { body, icon: '/icons/icon-192.png' });
+    n.onclick = () => {
+      window.focus();
+      window.location.href = url;
+    };
   }
 }
 
@@ -47,10 +51,17 @@ export default function Layout() {
       if (msg.senderId !== user?.id) {
         const text = `💬 ${msg.senderName}: ${msg.content.substring(0, 40)}`;
         showToast(text);
-        sendBrowserNotification('💬 홍캠프 새 메시지', `${msg.senderName}: ${msg.content.substring(0, 60)}`);
+        sendBrowserNotification(
+          '💬 홍캠프 새 메시지',
+          `${msg.senderName}: ${msg.content.substring(0, 60)}`,
+          `/chat/${msg.roomId}`
+        );
       }
     },
-    onToast: showToast,
+    onToast: (text, url) => {
+      showToast(text);
+      if (url) sendBrowserNotification('📅 홍캠프', text, url);
+    },
   });
 
   const NAV = [

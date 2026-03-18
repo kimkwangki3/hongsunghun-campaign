@@ -27,13 +27,24 @@ export default function HomePage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    Promise.all([
-      api.get('/chat/rooms'),
-      api.get('/schedule/upcoming')
-    ]).then(([roomsRes, schedRes]) => {
-      setRooms(roomsRes.data.data || []);
-      setSchedules(schedRes.data.data || []);
-    }).catch(() => {}).finally(() => setLoading(false));
+    let done = 0;
+    const finish = () => { if (++done === 2) setLoading(false); };
+
+    api.get('/chat/rooms')
+      .then(r => setRooms(r.data.data || []))
+      .catch(() => setRooms([]))
+      .finally(finish);
+
+    api.get('/schedule/upcoming')
+      .then(r => setSchedules(r.data.data || []))
+      .catch(() => {
+        // /upcoming 없으면 일반 목록에서 필터링
+        const now = Math.floor(Date.now() / 1000);
+        api.get('/schedule')
+          .then(r => setSchedules((r.data.data || []).filter(s => s.start_at >= now).slice(0, 5)))
+          .catch(() => setSchedules([]));
+      })
+      .finally(finish);
   }, []);
 
   const today = new Date();

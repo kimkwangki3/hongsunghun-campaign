@@ -5,6 +5,21 @@ const { db } = require('../database');
 const { requireAdmin } = require('../middleware/auth');
 const { sendPushToAll } = require('../utils/fcm');
 
+// GET /api/v1/schedule/upcoming — 가까운 일정 5개 (반드시 /  앞에 선언)
+router.get('/upcoming', async (req, res) => {
+  try {
+    const now = Math.floor(Date.now() / 1000);
+    const schedules = await db.all(
+      `SELECT s.*, u.name as creator_name FROM schedules s LEFT JOIN users u ON s.created_by = u.id WHERE s.start_at >= $1 ORDER BY s.start_at ASC LIMIT 5`,
+      [now]
+    );
+    res.json({ success: true, data: schedules });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: '서버 오류' });
+  }
+});
+
 // GET /api/v1/schedule — 일정 목록
 router.get('/', async (req, res) => {
   try {
@@ -22,21 +37,6 @@ router.get('/', async (req, res) => {
     }
 
     const schedules = await db.all(query, params);
-    res.json({ success: true, data: schedules });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ success: false, message: '서버 오류' });
-  }
-});
-
-// GET /api/v1/schedule/upcoming — 가까운 일정 5개
-router.get('/upcoming', async (req, res) => {
-  try {
-    const now = Math.floor(Date.now() / 1000);
-    const schedules = await db.all(
-      `SELECT s.*, u.name as creator_name FROM schedules s LEFT JOIN users u ON s.created_by = u.id WHERE s.start_at >= $1 ORDER BY s.start_at ASC LIMIT 5`,
-      [now]
-    );
     res.json({ success: true, data: schedules });
   } catch (err) {
     console.error(err);

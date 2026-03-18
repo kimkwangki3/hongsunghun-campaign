@@ -31,7 +31,8 @@ app.use('/api/v1/auth/', authLimiter);
 
 // Socket.io
 const io = new Server(server, {
-  cors: { origin: ALLOWED_ORIGINS, credentials: true }
+  cors: { origin: ALLOWED_ORIGINS, credentials: true },
+  maxHttpBufferSize: 8e6  // 8MB (base64 이미지 전송)
 });
 
 // 소켓 인증 미들웨어

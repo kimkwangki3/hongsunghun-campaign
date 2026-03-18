@@ -37,11 +37,11 @@ function initSocket(token) {
 
   // 서버 발송 알림 (일정·선거·긴급) — onToast 가진 구독자에게
   socket.on('schedule_reminder', ({ message }) =>
-    subscribers.forEach(s => s.cb.current.onToast?.(message)));
+    subscribers.forEach(s => s.cb.current.onToast?.(message, '/schedule')));
   socket.on('election_countdown', ({ body }) =>
-    subscribers.forEach(s => s.cb.current.onToast?.(body)));
+    subscribers.forEach(s => s.cb.current.onToast?.(body, '/schedule')));
   socket.on('broadcast_notification', ({ title, body }) =>
-    subscribers.forEach(s => s.cb.current.onToast?.(`🚨 ${title}: ${body}`)));
+    subscribers.forEach(s => s.cb.current.onToast?.(`🚨 ${title}: ${body}`, '/')));
 
   socket.on('messages_cleared', (data) =>
     subscribers.forEach(s => s.cb.current.onMessagesCleared?.(data)));

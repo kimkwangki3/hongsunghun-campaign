@@ -127,15 +127,32 @@ export default function ChatPage() {
   async function handleFileChange(e) {
     const file = e.target.files?.[0];
     if (!file || !socket) return;
+
+    const imageExts = /\.(jpg|jpeg|png|gif|webp)$/i;
+    const isImage = imageExts.test(file.name);
+
+    if (file.size > 8 * 1024 * 1024) {
+      alert('파일 크기는 8MB 이하만 가능합니다');
+      e.target.value = '';
+      return;
+    }
+
     setUploading(true);
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await api.post('/chat/upload', formData);
-      const { url, name, type } = res.data.data;
-      // 파일 URL을 메시지로 전송 (content = JSON)
-      const content = JSON.stringify({ url, name, type });
-      socket.emit('send_message', { roomId, content, type });
+      if (isImage) {
+        // 이미지: canvas로 압축 후 base64로 DB 저장 (재배포 후에도 유지)
+        const base64 = await compressImage(file);
+        const content = JSON.stringify({ base64, name: file.name, type: 'image' });
+        socket.emit('send_message', { roomId, content, type: 'image' });
+      } else {
+        // 파일: 서버 업로드 (재배포 시 소실될 수 있음)
+        const formData = new FormData();
+        formData.append('file', file);
+        const res = await api.post('/chat/upload', formData);
+        const { url, name, type } = res.data.data;
+        const content = JSON.stringify({ url, name, type });
+        socket.emit('send_message', { roomId, content, type });
+      }
     } catch (err) {
       console.error('파일 업로드 실패:', err);
     } finally {
@@ -455,14 +472,15 @@ function MessageContent({ msg, isMine }) {
     let parsed = null;
     try { parsed = JSON.parse(msg.content); } catch {}
 
-    if (parsed?.url) {
+    if (parsed?.base64 || parsed?.url) {
+      const imgSrc = parsed.base64 || parsed.url;
       if (msg.type === 'image') {
         return (
           <div style={{ ...bubbleStyle, padding: 4 }}>
             <img
-              src={parsed.url}
+              src={imgSrc}
               alt={parsed.name || '이미지'}
-              onClick={() => window.open(parsed.url, '_blank')}
+              onClick={() => window.open(imgSrc, '_blank')}
               style={{
                 maxWidth: 220, maxHeight: 280, borderRadius: isMine ? '13px 2px 13px 13px' : '2px 13px 13px 13px',
                 display: 'block', cursor: 'pointer', objectFit: 'cover'
@@ -498,4 +516,30 @@ function MessageContent({ msg, isMine }) {
       {msg.content}
     </div>
   );
+}
+
+// 이미지 canvas 압축 → base64 (DB 저장용, 재배포 후에도 유지)
+function compressImage(file, maxWidth = 1200, quality = 0.75) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        let { width, height } = img;
+        if (width > maxWidth) {
+          height = Math.round((height * maxWidth) / width);
+          width = maxWidth;
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      img.onerror = reject;
+      img.src = e.target.result;
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
 }
