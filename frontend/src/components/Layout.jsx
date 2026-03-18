@@ -47,7 +47,7 @@ export default function Layout() {
       if (msg.senderId !== user?.id) {
         const text = `💬 ${msg.senderName}: ${msg.content.substring(0, 40)}`;
         showToast(text);
-        sendBrowserNotification('💬 새 메시지', `${msg.senderName}: ${msg.content.substring(0, 60)}`);
+        sendBrowserNotification('💬 홍캠프 새 메시지', `${msg.senderName}: ${msg.content.substring(0, 60)}`);
       }
     },
     onToast: showToast,

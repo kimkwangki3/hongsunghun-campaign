@@ -10,8 +10,8 @@ export default defineConfig({
       registerType: 'autoUpdate',
       includeAssets: ['icons/*.png', 'icons/*.svg'],
       manifest: {
-        name: '홍성훈 캠프',
-        short_name: '홍성훈',
+        name: '홍캠프',
+        short_name: '홍캠프',
         description: '홍성훈 후보 선거캠프 전용 보안 채팅·일정 앱',
         theme_color: '#1a1a2e',
         background_color: '#1a1a2e',
