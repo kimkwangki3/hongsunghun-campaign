@@ -246,10 +246,10 @@ export default function ChatPage() {
           const timeStr = dt && !isNaN(dt)
             ? dt.toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
             : '';
-          const memberCount = roomInfo?.member_count || 1;
-          const readCount = readCounts[msg.id] || 0;
-          // 안 읽은 사람 수 = (방 전체 - 나) - 읽은 수
-          const unread = isMine ? Math.max(0, (memberCount - 1) - readCount) : 0;
+          const memberCount = parseInt(roomInfo?.member_count) || 1;
+          const readCount = parseInt(readCounts[msg.id]) || 0;
+          // 안 읽은 사람 수 = (방 전체 - 발신자) - 읽은 수 (모든 메시지에 표시, admin 제외)
+          const unread = Math.max(0, (memberCount - 1) - readCount);
 
           return (
             <React.Fragment key={msg.id}>
@@ -301,7 +301,7 @@ export default function ChatPage() {
 
                   {/* 시간 + 안 읽은 수 */}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: isMine ? 'flex-end' : 'flex-start', gap: 2, marginBottom: 2 }}>
-                    {isMine && unread > 0 && (
+                    {unread > 0 && (
                       <button
                         onClick={(e) => openReaderPopup(e, msg.id)}
                         style={{

@@ -34,9 +34,18 @@ function ProtectedRoute({ children }) {
 
 export default function App() {
   const token = useAuthStore(s => s.token);
+  const setAuth = useAuthStore(s => s.setAuth);
 
   useEffect(() => {
-    if (token) initPushNotifications();
+    if (!token) return;
+    // 앱 시작 시 최신 사용자 정보(role 등) 서버에서 갱신
+    import('./utils/api').then(({ api }) => {
+      api.get('/auth/me').then(r => {
+        const u = r.data.data;
+        if (u) setAuth(token, { id: u.id, name: u.name, role: u.role });
+      }).catch(() => {});
+    });
+    initPushNotifications();
   }, [token]);
 
   return (

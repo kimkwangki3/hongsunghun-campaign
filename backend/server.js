@@ -163,12 +163,8 @@ io.on('connection', async (socket) => {
   // 메시지 읽음 처리
   socket.on('read_messages', async ({ roomId }) => {
     try {
-      // admin이 DM방을 열람할 때는 읽음 처리 하지 않음
-      const { role } = socket.user;
-      if (role === 'admin') {
-        const room = await db.get('SELECT type FROM rooms WHERE id = $1', [roomId]);
-        if (room?.type === 'direct') return;
-      }
+      // admin은 어떤 방에서도 읽음 처리 안 함 (카운팅에서 완전 제외)
+      if (socket.user.role === 'admin') return;
 
       const unread = await db.all(`
         SELECT id FROM messages

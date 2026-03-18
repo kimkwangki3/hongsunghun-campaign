@@ -15,32 +15,45 @@ export default function DMListPage() {
   const [starting, setStarting] = useState(null);
 
   useEffect(() => {
-    const requests = [api.get('/chat/members'), api.get('/chat/rooms')];
-    if (isAdmin) requests.push(api.get('/chat/admin/dms'));
+    const userId = user?.id;
+    const userName = user?.name;
+    if (!userId) return;
 
-    Promise.all(requests).then(([membersRes, roomsRes, adminDmsRes]) => {
-      // admin은 1:1 대화 대상에서 제외
-      const allMembers = (membersRes.data.data || []).filter(m => m.id !== user?.id && m.role !== 'admin');
-      setMembers(allMembers);
+    // 멤버 목록: 본인·admin 제외
+    api.get('/chat/members')
+      .then(r => {
+        const all = r.data.data || [];
+        setMembers(all.filter(m => m.id !== userId && m.role !== 'admin'));
+      })
+      .catch(() => setMembers([]));
 
-      const rooms = (roomsRes.data.data || []).filter(r => r.type === 'direct');
-      const map = {};
-      rooms.forEach(r => {
-        const otherName = r.name?.replace(user?.name, '').replace(' · ', '').trim();
-        const match = allMembers.find(m => m.name === otherName);
-        if (match) {
-          map[match.id] = {
-            roomId: r.id,
-            unread: parseInt(r.unread_count) || 0,
-            lastMessage: r.lastMessage || '',
-          };
-        }
-      });
-      setDmRooms(map);
+    // 내 DM방 → 이름 기반으로 상대 매핑
+    api.get('/chat/rooms')
+      .then(r => {
+        const rooms = (r.data.data || []).filter(rm => rm.type === 'direct');
+        const map = {};
+        rooms.forEach(rm => {
+          const parts = (rm.name || '').split(' · ');
+          const otherName = parts.map(p => p.trim()).find(p => p !== userName);
+          if (otherName) {
+            map[otherName] = {
+              roomId: rm.id,
+              unread: parseInt(rm.unread_count) || 0,
+              lastMessage: rm.lastMessage || '',
+            };
+          }
+        });
+        setDmRooms(map);
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false));
 
-      if (adminDmsRes) setAllDmRooms(adminDmsRes.data.data || []);
-    }).catch(() => {}).finally(() => setLoading(false));
-  }, [user, isAdmin]);
+    if (isAdmin) {
+      api.get('/chat/admin/dms')
+        .then(r => setAllDmRooms(r.data.data || []))
+        .catch(() => {});
+    }
+  }, [user?.id, user?.name, isAdmin]);
 
   async function openDM(targetUserId) {
     setStarting(targetUserId);
@@ -80,7 +93,7 @@ export default function DMListPage() {
           {members.length === 0
             ? <div style={{ padding: '20px', textAlign: 'center', color: '#404060', fontSize: 14 }}>다른 캠프원이 없습니다</div>
             : members.map(member => {
-            const dm = dmRooms[member.id];
+            const dm = dmRooms[member.name];
             const isLoading = starting === member.id;
             return (
               <button

@@ -41,7 +41,7 @@ router.get('/rooms', async (req, res) => {
         (SELECT COUNT(*) FROM messages m2
          WHERE m2.room_id = r.id AND m2.sender_id != $1
          AND m2.id NOT IN (SELECT message_id FROM message_reads WHERE user_id = $2)) as unread_count,
-        (SELECT COUNT(*) FROM room_members WHERE room_id = r.id) as member_count
+        (SELECT COUNT(*) FROM room_members rm2 JOIN users u2 ON rm2.user_id = u2.id WHERE rm2.room_id = r.id AND u2.role != 'admin') as member_count
       FROM rooms r
       JOIN room_members rm ON rm.room_id = r.id
       WHERE rm.user_id = $3
@@ -105,7 +105,7 @@ router.get('/rooms/:roomId', async (req, res) => {
     const { roomId } = req.params;
     const room = await db.get(`
       SELECT r.*,
-        (SELECT COUNT(*) FROM room_members WHERE room_id = r.id) as member_count
+        (SELECT COUNT(*) FROM room_members rm2 JOIN users u2 ON rm2.user_id = u2.id WHERE rm2.room_id = r.id AND u2.role != 'admin') as member_count
       FROM rooms r
       JOIN room_members rm ON rm.room_id = r.id
       WHERE r.id = $1 AND rm.user_id = $2
