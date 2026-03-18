@@ -19,6 +19,7 @@ export default function ChatPage() {
   const [readCounts, setReadCounts] = useState({}); // { msgId: number }
   const [readerPopup, setReaderPopup] = useState(null); // { msgId, readers, anchor }
   const [uploading, setUploading] = useState(false);
+  const [showClearConfirm, setShowClearConfirm] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -30,6 +31,9 @@ export default function ChatPage() {
         addMessage(roomId, msg);
         socket?.emit('read_messages', { roomId });
       }
+    },
+    onMessagesCleared: ({ roomId: rId }) => {
+      if (rId === roomId) setMessages(roomId, []);
     },
     onUserTyping: ({ userId, name }) => {
       if (userId !== user.id) {
@@ -118,6 +122,15 @@ export default function ChatPage() {
     }
   }
 
+  async function handleClearMessages() {
+    try {
+      await api.delete(`/chat/rooms/${roomId}/messages`);
+      setShowClearConfirm(false);
+    } catch (err) {
+      console.error('전체 삭제 실패:', err);
+    }
+  }
+
   async function openReaderPopup(e, msgId) {
     e.stopPropagation();
     const res = await api.get(`/chat/messages/${msgId}/readers`);
@@ -150,6 +163,13 @@ export default function ChatPage() {
             {typingUsers.length > 0 ? ` · ${typingUsers.join(', ')} 입력 중...` : ''}
           </div>
         </div>
+        {user?.role === 'admin' && (
+          <button onClick={() => setShowClearConfirm(true)} style={{
+            background: 'none', border: 'none', cursor: 'pointer',
+            color: '#ef4444', fontSize: 11, padding: '4px 8px',
+            fontFamily: "'Noto Sans KR', sans-serif", opacity: 0.7
+          }}>전체삭제</button>
+        )}
       </div>
 
       {/* 메시지 영역 */}
@@ -276,6 +296,40 @@ export default function ChatPage() {
               </div>
             ))
           }
+        </div>
+      )}
+
+      {/* 전체삭제 확인 팝업 */}
+      {showClearConfirm && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200
+        }} onClick={() => setShowClearConfirm(false)}>
+          <div style={{
+            background: '#1a1a35', border: '1px solid rgba(239,68,68,0.3)',
+            borderRadius: 16, padding: '24px 28px', width: 280, textAlign: 'center'
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 28, marginBottom: 12 }}>🗑️</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#e8e8f8', marginBottom: 8 }}>
+              대화 내용 전체 삭제
+            </div>
+            <div style={{ fontSize: 13, color: '#8080b0', marginBottom: 20, lineHeight: 1.5 }}>
+              이 채팅방의 모든 메시지가 삭제됩니다.<br />되돌릴 수 없습니다.
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setShowClearConfirm(false)} style={{
+                flex: 1, padding: '10px', borderRadius: 10, border: 'none',
+                background: 'rgba(255,255,255,0.07)', color: '#a0a0c0',
+                cursor: 'pointer', fontFamily: "'Noto Sans KR', sans-serif", fontSize: 14
+              }}>취소</button>
+              <button onClick={handleClearMessages} style={{
+                flex: 1, padding: '10px', borderRadius: 10, border: 'none',
+                background: '#ef4444', color: '#fff',
+                cursor: 'pointer', fontFamily: "'Noto Sans KR', sans-serif",
+                fontSize: 14, fontWeight: 700
+              }}>삭제</button>
+            </div>
+          </div>
         </div>
       )}
 

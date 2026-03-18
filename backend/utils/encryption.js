@@ -2,8 +2,9 @@
 const crypto = require('crypto');
 
 const ALGORITHM = 'aes-256-gcm';
+// 암호화 키는 ENCRYPTION_KEY 우선, 없으면 JWT_SECRET 사용 (하위 호환)
 const KEY = crypto.scryptSync(
-  process.env.JWT_SECRET || 'fallback_key_change_this',
+  process.env.ENCRYPTION_KEY || process.env.JWT_SECRET || 'fallback_key_change_this',
   'campaign_salt_2026',
   32
 );

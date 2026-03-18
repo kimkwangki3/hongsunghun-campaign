@@ -42,16 +42,19 @@ function initSocket(token) {
     subscribers.forEach(s => s.cb.current.onToast?.(body)));
   socket.on('broadcast_notification', ({ title, body }) =>
     subscribers.forEach(s => s.cb.current.onToast?.(`🚨 ${title}: ${body}`)));
+
+  socket.on('messages_cleared', (data) =>
+    subscribers.forEach(s => s.cb.current.onMessagesCleared?.(data)));
 }
 
-export function useSocket({ onNewMessage, onUserTyping, onMessagesRead, onRoomOnlineUpdate, onToast } = {}) {
+export function useSocket({ onNewMessage, onUserTyping, onMessagesRead, onRoomOnlineUpdate, onToast, onMessagesCleared } = {}) {
   const token = useAuthStore(s => s.token);
   const [connected, setConnected] = useState(globalSocket?.connected ?? false);
   const cb = useRef({});
 
   // 매 렌더마다 최신 콜백으로 갱신 (stale closure 방지)
   useEffect(() => {
-    cb.current = { onNewMessage, onUserTyping, onMessagesRead, onRoomOnlineUpdate, onToast };
+    cb.current = { onNewMessage, onUserTyping, onMessagesRead, onRoomOnlineUpdate, onToast, onMessagesCleared };
   });
 
   // 구독자 등록 / 해제

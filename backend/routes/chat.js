@@ -111,6 +111,9 @@ router.get('/rooms/:roomId/messages', async (req, res) => {
     );
     if (!member) return res.status(403).json({ success: false, message: '접근 권한 없음' });
 
+    // 이틀 전 타임스탬프 (DB엔 전체 보존, 조회만 필터)
+    const twoDaysAgo = Math.floor(Date.now() / 1000) - 2 * 24 * 60 * 60;
+
     let query, params;
     if (before) {
       query = `
@@ -119,11 +122,11 @@ router.get('/rooms/:roomId/messages', async (req, res) => {
                (SELECT COUNT(*) FROM message_reads mr WHERE mr.message_id = m.id) as read_count
         FROM messages m
         JOIN users u ON m.sender_id = u.id
-        WHERE m.room_id = $1 AND m.created_at < $2
+        WHERE m.room_id = $1 AND m.created_at < $2 AND m.created_at >= $3
         ORDER BY m.created_at DESC
-        LIMIT $3
+        LIMIT $4
       `;
-      params = [roomId, before, parseInt(limit)];
+      params = [roomId, before, twoDaysAgo, parseInt(limit)];
     } else {
       query = `
         SELECT m.id, m.room_id, m.sender_id, u.name as sender_name,
@@ -131,11 +134,11 @@ router.get('/rooms/:roomId/messages', async (req, res) => {
                (SELECT COUNT(*) FROM message_reads mr WHERE mr.message_id = m.id) as read_count
         FROM messages m
         JOIN users u ON m.sender_id = u.id
-        WHERE m.room_id = $1
+        WHERE m.room_id = $1 AND m.created_at >= $2
         ORDER BY m.created_at DESC
-        LIMIT $2
+        LIMIT $3
       `;
-      params = [roomId, parseInt(limit)];
+      params = [roomId, twoDaysAgo, parseInt(limit)];
     }
 
     const messages = await db.all(query, params);
@@ -154,6 +157,30 @@ router.get('/rooms/:roomId/messages', async (req, res) => {
     })).reverse();
 
     res.json({ success: true, data: result });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: '서버 오류' });
+  }
+});
+
+// DELETE /api/v1/chat/rooms/:roomId/messages — 전체 메시지 삭제 (관리자만)
+router.delete('/rooms/:roomId/messages', requireAdmin, async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const room = await db.get('SELECT id FROM rooms WHERE id = $1', [roomId]);
+    if (!room) return res.status(404).json({ success: false, message: '방 없음' });
+
+    // message_reads 먼저 삭제 (FK 제약)
+    await db.run(
+      'DELETE FROM message_reads WHERE message_id IN (SELECT id FROM messages WHERE room_id = $1)',
+      [roomId]
+    );
+    await db.run('DELETE FROM messages WHERE room_id = $1', [roomId]);
+
+    // 소켓으로 실시간 갱신
+    req.app.get('io').to(roomId).emit('messages_cleared', { roomId });
+
+    res.json({ success: true, message: '대화 내용이 전체 삭제되었습니다' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: '서버 오류' });
