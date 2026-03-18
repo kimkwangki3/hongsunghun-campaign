@@ -99,6 +99,25 @@ router.post('/rooms', requireAdmin, async (req, res) => {
   }
 });
 
+// GET /api/v1/chat/rooms/:roomId — 단일 방 정보
+router.get('/rooms/:roomId', async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const room = await db.get(`
+      SELECT r.*,
+        (SELECT COUNT(*) FROM room_members WHERE room_id = r.id) as member_count
+      FROM rooms r
+      JOIN room_members rm ON rm.room_id = r.id
+      WHERE r.id = $1 AND rm.user_id = $2
+    `, [roomId, req.user.id]);
+    if (!room) return res.status(404).json({ success: false, message: '방 없음' });
+    res.json({ success: true, data: room });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: '서버 오류' });
+  }
+});
+
 // GET /api/v1/chat/rooms/:roomId/messages — 메시지 조회 (읽음 수 포함)
 router.get('/rooms/:roomId/messages', async (req, res) => {
   try {

@@ -58,11 +58,10 @@ export default function ChatPage() {
 
   useEffect(() => {
     Promise.all([
-      api.get('/chat/rooms'),
+      api.get(`/chat/rooms/${roomId}`),
       api.get(`/chat/rooms/${roomId}/messages?limit=50`)
-    ]).then(([roomsRes, msgsRes]) => {
-      const room = roomsRes.data.data.find(r => r.id === roomId);
-      setRoomInfo(room);
+    ]).then(([roomRes, msgsRes]) => {
+      setRoomInfo(roomRes.data.data);
 
       const msgs = msgsRes.data.data;
       setMessages(roomId, msgs);
