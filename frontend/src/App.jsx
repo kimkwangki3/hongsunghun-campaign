@@ -34,7 +34,7 @@ export default function App() {
           </ProtectedRoute>
         }>
           <Route index element={<HomePage />} />
-          <Route path="chat" element={<ChatRoomPage />} />
+          <Route path="chat" element={<Navigate to="/chat/room_general" replace />} />
           <Route path="chat/:roomId" element={<ChatPage />} />
           <Route path="schedule" element={<SchedulePage />} />
           <Route path="schedule/add" element={<ScheduleAddPage />} />
