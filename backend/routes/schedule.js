@@ -14,10 +14,10 @@ router.get('/', async (req, res) => {
     if (month && year) {
       const start = new Date(parseInt(year), parseInt(month) - 1, 1).getTime() / 1000;
       const end = new Date(parseInt(year), parseInt(month), 0, 23, 59, 59).getTime() / 1000;
-      query = 'SELECT * FROM schedules WHERE start_at >= $1 AND start_at <= $2 ORDER BY start_at ASC';
+      query = `SELECT s.*, u.name as creator_name FROM schedules s LEFT JOIN users u ON s.created_by = u.id WHERE s.start_at >= $1 AND s.start_at <= $2 ORDER BY s.start_at ASC`;
       params = [start, end];
     } else {
-      query = 'SELECT * FROM schedules ORDER BY start_at ASC';
+      query = `SELECT s.*, u.name as creator_name FROM schedules s LEFT JOIN users u ON s.created_by = u.id ORDER BY s.start_at ASC`;
       params = [];
     }
 
@@ -34,7 +34,7 @@ router.get('/upcoming', async (req, res) => {
   try {
     const now = Math.floor(Date.now() / 1000);
     const schedules = await db.all(
-      'SELECT * FROM schedules WHERE start_at >= $1 ORDER BY start_at ASC LIMIT 5',
+      `SELECT s.*, u.name as creator_name FROM schedules s LEFT JOIN users u ON s.created_by = u.id WHERE s.start_at >= $1 ORDER BY s.start_at ASC LIMIT 5`,
       [now]
     );
     res.json({ success: true, data: schedules });

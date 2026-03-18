@@ -3,7 +3,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../utils/api';
 import { useAuthStore } from '../store/stores';
-import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, addMonths, subMonths, parseISO } from 'date-fns';
+import { format, startOfMonth, endOfMonth, eachDayOfInterval, isSameDay, isToday, addMonths, subMonths } from 'date-fns';
 import { ko } from 'date-fns/locale';
 
 const CATEGORY_META = {
@@ -21,20 +21,36 @@ export default function SchedulePage() {
   const [viewDate, setViewDate] = useState(new Date());
   const [schedules, setSchedules] = useState([]);
   const [selected, setSelected] = useState(null);
-  const [view, setView] = useState('calendar'); // calendar | list
+  const [view, setView] = useState('calendar');
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
-  useEffect(() => {
+  const loadSchedules = () => {
     const y = viewDate.getFullYear();
     const m = viewDate.getMonth() + 1;
     api.get(`/schedule?year=${y}&month=${m}`).then(r => setSchedules(r.data.data));
-  }, [viewDate]);
+  };
+
+  useEffect(() => { loadSchedules(); }, [viewDate]);
+
+  async function handleDelete(schedule) {
+    try {
+      await api.delete(`/schedule/${schedule.id}`);
+      setDeleteTarget(null);
+      loadSchedules();
+    } catch (err) {
+      alert(err.response?.data?.message || '삭제 실패');
+    }
+  }
+
+  const canEditDelete = (s) => {
+    if (s.created_by === 'system') return false;
+    return user?.role === 'admin' || s.created_by === user?.id;
+  };
 
   const today = new Date();
   const dDayCount = Math.ceil((ELECTION_DAY - today) / (1000 * 60 * 60 * 24));
-
   const days = eachDayOfInterval({ start: startOfMonth(viewDate), end: endOfMonth(viewDate) });
   const firstDow = startOfMonth(viewDate).getDay();
-
   const selectedDaySchedules = selected
     ? schedules.filter(s => isSameDay(new Date(s.start_at * 1000), selected))
     : [];
@@ -54,10 +70,7 @@ export default function SchedulePage() {
             <div style={{ fontSize: 11, color: '#818cf8', marginBottom: 2 }}>제9회 전국동시지방선거</div>
             <div style={{ fontSize: 13, color: '#c4c4e8' }}>2026년 6월 3일 (수)</div>
           </div>
-          <div style={{
-            fontSize: 28, fontWeight: 900, color: '#818cf8',
-            fontVariantNumeric: 'tabular-nums'
-          }}>
+          <div style={{ fontSize: 28, fontWeight: 900, color: '#818cf8' }}>
             {dDayCount === 0 ? '🗳️ D-Day' : `D-${dDayCount}`}
           </div>
         </div>
@@ -78,7 +91,6 @@ export default function SchedulePage() {
             </button>
           ))}
         </div>
-
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={() => setViewDate(subMonths(viewDate, 1))} style={{ background: 'none', border: 'none', color: '#818cf8', cursor: 'pointer', fontSize: 18 }}>‹</button>
           <span style={{ fontSize: 14, fontWeight: 700, color: '#e0e0f8', minWidth: 70, textAlign: 'center' }}>
@@ -90,16 +102,12 @@ export default function SchedulePage() {
 
       {view === 'calendar' ? (
         <>
-          {/* 캘린더 */}
           <div style={{ padding: '0 12px' }}>
-            {/* 요일 헤더 */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', marginBottom: 4 }}>
               {['일', '월', '화', '수', '목', '금', '토'].map((d, i) => (
                 <div key={d} style={{ textAlign: 'center', fontSize: 11, color: i === 0 ? '#ef4444' : i === 6 ? '#818cf8' : '#40406a', padding: '4px 0' }}>{d}</div>
               ))}
             </div>
-
-            {/* 날짜 그리드 */}
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 2 }}>
               {Array.from({ length: firstDow }).map((_, i) => <div key={`e${i}`} />)}
               {days.map(day => {
@@ -107,7 +115,6 @@ export default function SchedulePage() {
                 const isSelected = selected && isSameDay(day, selected);
                 const isTodayDate = isToday(day);
                 const dow = day.getDay();
-
                 return (
                   <button key={day} onClick={() => setSelected(isSameDay(selected, day) ? null : day)}
                     style={{
@@ -128,10 +135,7 @@ export default function SchedulePage() {
                     </span>
                     <div style={{ display: 'flex', gap: 2, minHeight: 8 }}>
                       {daySchedules.slice(0, 3).map(s => (
-                        <span key={s.id} style={{
-                          width: 5, height: 5, borderRadius: '50%',
-                          background: CATEGORY_META[s.category]?.color || '#818cf8'
-                        }} />
+                        <span key={s.id} style={{ width: 5, height: 5, borderRadius: '50%', background: CATEGORY_META[s.category]?.color || '#818cf8' }} />
                       ))}
                     </div>
                   </button>
@@ -140,7 +144,6 @@ export default function SchedulePage() {
             </div>
           </div>
 
-          {/* 선택된 날 일정 */}
           {selected && (
             <div style={{ padding: '16px 16px 0' }}>
               <div style={{ fontSize: 13, color: '#60608a', marginBottom: 8 }}>
@@ -149,7 +152,12 @@ export default function SchedulePage() {
               {selectedDaySchedules.length === 0 ? (
                 <div style={{ color: '#404060', fontSize: 13, textAlign: 'center', padding: '16px 0' }}>일정 없음</div>
               ) : (
-                selectedDaySchedules.map(s => <ScheduleCard key={s.id} schedule={s} />)
+                selectedDaySchedules.map(s => (
+                  <ScheduleCard key={s.id} schedule={s} user={user}
+                    canEdit={canEditDelete(s)}
+                    onEdit={() => navigate('/schedule/add', { state: { schedule: s } })}
+                    onDelete={() => setDeleteTarget(s)} />
+                ))
               )}
             </div>
           )}
@@ -159,31 +167,65 @@ export default function SchedulePage() {
           {schedules.length === 0 ? (
             <div style={{ color: '#404060', fontSize: 13, textAlign: 'center', padding: '40px 0' }}>이달 일정 없음</div>
           ) : (
-            schedules.map(s => <ScheduleCard key={s.id} schedule={s} showDate />)
+            schedules.map(s => (
+              <ScheduleCard key={s.id} schedule={s} user={user} showDate
+                canEdit={canEditDelete(s)}
+                onEdit={() => navigate('/schedule/add', { state: { schedule: s } })}
+                onDelete={() => setDeleteTarget(s)} />
+            ))
           )}
         </div>
       )}
 
       {/* 일정 추가 버튼 */}
-      <button
-        onClick={() => navigate('/schedule/add')}
-        style={{
-          position: 'fixed', bottom: 76, right: 20,
-          width: 52, height: 52, borderRadius: '50%', border: 'none',
-          background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
-          color: '#fff', fontSize: 24, cursor: 'pointer',
-          boxShadow: '0 4px 20px rgba(79,70,229,0.5)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          zIndex: 50
-        }}
-      >+</button>
+      <button onClick={() => navigate('/schedule/add')} style={{
+        position: 'fixed', bottom: 76, right: 20,
+        width: 52, height: 52, borderRadius: '50%', border: 'none',
+        background: 'linear-gradient(135deg, #4f46e5, #7c3aed)',
+        color: '#fff', fontSize: 24, cursor: 'pointer',
+        boxShadow: '0 4px 20px rgba(79,70,229,0.5)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 50
+      }}>+</button>
+
+      {/* 삭제 확인 팝업 */}
+      {deleteTarget && (
+        <div style={{
+          position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 200
+        }} onClick={() => setDeleteTarget(null)}>
+          <div style={{
+            background: '#1a1a35', border: '1px solid rgba(239,68,68,0.3)',
+            borderRadius: 16, padding: '24px 28px', width: 280, textAlign: 'center'
+          }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 28, marginBottom: 12 }}>🗑️</div>
+            <div style={{ fontSize: 15, fontWeight: 700, color: '#e8e8f8', marginBottom: 8 }}>일정 삭제</div>
+            <div style={{ fontSize: 13, color: '#8080b0', marginBottom: 20, lineHeight: 1.5 }}>
+              <b style={{ color: '#c0c0e8' }}>{deleteTarget.title}</b><br />을 삭제할까요?
+            </div>
+            <div style={{ display: 'flex', gap: 10 }}>
+              <button onClick={() => setDeleteTarget(null)} style={{
+                flex: 1, padding: '10px', borderRadius: 10, border: 'none',
+                background: 'rgba(255,255,255,0.07)', color: '#a0a0c0',
+                cursor: 'pointer', fontFamily: "'Noto Sans KR', sans-serif", fontSize: 14
+              }}>취소</button>
+              <button onClick={() => handleDelete(deleteTarget)} style={{
+                flex: 1, padding: '10px', borderRadius: 10, border: 'none',
+                background: '#ef4444', color: '#fff',
+                cursor: 'pointer', fontFamily: "'Noto Sans KR', sans-serif",
+                fontSize: 14, fontWeight: 700
+              }}>삭제</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-function ScheduleCard({ schedule, showDate }) {
+function ScheduleCard({ schedule, user, showDate, canEdit, onEdit, onDelete }) {
   const meta = CATEGORY_META[schedule.category] || CATEGORY_META.etc;
   const startDate = new Date(schedule.start_at * 1000);
+  const isSystem = schedule.created_by === 'system';
 
   return (
     <div style={{
@@ -197,7 +239,7 @@ function ScheduleCard({ schedule, showDate }) {
       }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 8 }}>
-          <div style={{ fontSize: 14, fontWeight: 600, color: '#e0e0f8', lineHeight: 1.4 }}>
+          <div style={{ fontSize: 14, fontWeight: 600, color: '#e0e0f8', lineHeight: 1.4, flex: 1 }}>
             {schedule.is_important && <span style={{ marginRight: 4 }}>⚡</span>}
             {schedule.title}
           </div>
@@ -208,6 +250,7 @@ function ScheduleCard({ schedule, showDate }) {
             {meta.icon} {meta.label}
           </span>
         </div>
+
         {showDate && (
           <div style={{ fontSize: 12, color: '#818cf8', marginTop: 3 }}>
             {format(startDate, 'M월 d일 (E) HH:mm', { locale: ko })}
@@ -219,6 +262,29 @@ function ScheduleCard({ schedule, showDate }) {
         {schedule.location && (
           <div style={{ fontSize: 12, color: '#606080', marginTop: 3 }}>📍 {schedule.location}</div>
         )}
+
+        {/* 작성자 + 수정/삭제 */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8 }}>
+          <span style={{ fontSize: 11, color: '#404060' }}>
+            {isSystem ? '⚙️ 시스템' : `👤 ${schedule.creator_name || '알 수 없음'}`}
+          </span>
+          {canEdit && (
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={onEdit} style={{
+                fontSize: 11, color: '#818cf8', background: 'rgba(129,140,248,0.1)',
+                border: '1px solid rgba(129,140,248,0.25)', borderRadius: 6,
+                padding: '3px 10px', cursor: 'pointer',
+                fontFamily: "'Noto Sans KR', sans-serif"
+              }}>수정</button>
+              <button onClick={onDelete} style={{
+                fontSize: 11, color: '#ef4444', background: 'rgba(239,68,68,0.1)',
+                border: '1px solid rgba(239,68,68,0.25)', borderRadius: 6,
+                padding: '3px 10px', cursor: 'pointer',
+                fontFamily: "'Noto Sans KR', sans-serif"
+              }}>삭제</button>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

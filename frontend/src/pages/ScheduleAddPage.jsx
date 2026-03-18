@@ -1,6 +1,6 @@
 // src/pages/ScheduleAddPage.jsx — Agent: FRONTEND
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { api } from '../utils/api';
 import { format } from 'date-fns';
 
@@ -13,14 +13,34 @@ const CATEGORIES = [
 
 export default function ScheduleAddPage() {
   const navigate = useNavigate();
-  const [form, setForm] = useState({
-    title: '', description: '', location: '',
-    category: 'campaign',
-    startDate: format(new Date(), 'yyyy-MM-dd'),
-    startTime: '10:00',
-    isImportant: false,
-    notifyDayBefore: true,
-    notifyOnDay: true,
+  const location = useLocation();
+  const editSchedule = location.state?.schedule || null;
+  const isEdit = !!editSchedule;
+
+  const [form, setForm] = useState(() => {
+    if (editSchedule) {
+      const d = new Date(editSchedule.start_at * 1000);
+      return {
+        title: editSchedule.title || '',
+        description: editSchedule.description || '',
+        location: editSchedule.location || '',
+        category: editSchedule.category || 'campaign',
+        startDate: format(d, 'yyyy-MM-dd'),
+        startTime: format(d, 'HH:mm'),
+        isImportant: !!editSchedule.is_important,
+        notifyDayBefore: !!editSchedule.notify_day_before,
+        notifyOnDay: !!editSchedule.notify_on_day,
+      };
+    }
+    return {
+      title: '', description: '', location: '',
+      category: 'campaign',
+      startDate: format(new Date(), 'yyyy-MM-dd'),
+      startTime: '10:00',
+      isImportant: false,
+      notifyDayBefore: true,
+      notifyOnDay: true,
+    };
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -35,15 +55,24 @@ export default function ScheduleAddPage() {
     const startAt = Math.floor(new Date(`${form.startDate}T${form.startTime}`).getTime() / 1000);
 
     try {
-      await api.post('/schedule', {
-        title: form.title, description: form.description,
-        location: form.location, category: form.category,
-        startAt, isImportant: form.isImportant,
-        notifyDayBefore: form.notifyDayBefore, notifyOnDay: form.notifyOnDay
-      });
+      if (isEdit) {
+        await api.put(`/schedule/${editSchedule.id}`, {
+          title: form.title, description: form.description,
+          location: form.location, category: form.category,
+          startAt, isImportant: form.isImportant,
+          notifyDayBefore: form.notifyDayBefore, notifyOnDay: form.notifyOnDay
+        });
+      } else {
+        await api.post('/schedule', {
+          title: form.title, description: form.description,
+          location: form.location, category: form.category,
+          startAt, isImportant: form.isImportant,
+          notifyDayBefore: form.notifyDayBefore, notifyOnDay: form.notifyOnDay
+        });
+      }
       navigate('/schedule');
     } catch (err) {
-      setError(err.response?.data?.message || '등록 실패');
+      setError(err.response?.data?.message || (isEdit ? '수정 실패' : '등록 실패'));
       setLoading(false);
     }
   }
@@ -61,7 +90,7 @@ export default function ScheduleAddPage() {
         background: '#111127', flexShrink: 0
       }}>
         <button onClick={() => navigate(-1)} style={{ background: 'none', border: 'none', color: '#818cf8', cursor: 'pointer', fontSize: 20 }}>←</button>
-        <span style={{ fontSize: 16, fontWeight: 700, color: '#e8e8f8' }}>일정 등록</span>
+        <span style={{ fontSize: 16, fontWeight: 700, color: '#e8e8f8' }}>{isEdit ? '일정 수정' : '일정 등록'}</span>
       </div>
 
       <form onSubmit={handleSubmit} style={{ padding: '20px 16px', display: 'flex', flexDirection: 'column', gap: 16 }}>
@@ -143,7 +172,7 @@ export default function ScheduleAddPage() {
           fontFamily: "'Noto Sans KR', sans-serif",
           boxShadow: loading ? 'none' : '0 4px 20px rgba(79,70,229,0.4)'
         }}>
-          {loading ? '등록 중...' : '일정 등록'}
+          {loading ? (isEdit ? '수정 중...' : '등록 중...') : (isEdit ? '일정 수정' : '일정 등록')}
         </button>
       </form>
     </div>
