@@ -29,7 +29,7 @@ export default function HomePage() {
   useEffect(() => {
     Promise.all([
       api.get('/chat/rooms'),
-      api.get('/schedule?limit=5')
+      api.get('/schedule/upcoming')
     ]).then(([roomsRes, schedRes]) => {
       setRooms(roomsRes.data.data || []);
       setSchedules(schedRes.data.data || []);
@@ -40,13 +40,9 @@ export default function HomePage() {
   today.setHours(0, 0, 0, 0);
   const dDay = differenceInDays(ELECTION_DAY, today);
 
-  const unreadRooms = rooms.filter(r => r.unread_count > 0);
+  const unreadRooms = rooms.filter(r => parseInt(r.unread_count) > 0);
   const chatRooms = rooms.filter(r => r.type !== 'announce');
-
-  const now = Math.floor(Date.now() / 1000);
-  const upcomingSchedules = schedules
-    .filter(s => s.start_at >= now - 86400)
-    .slice(0, 3);
+  const upcomingSchedules = schedules.slice(0, 3);
 
   const nextMilestone = ELECTION_MILESTONES.find(m => new Date(m.date) >= today);
 

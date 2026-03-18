@@ -108,11 +108,8 @@ async function initDB() {
     );
   `);
 
-  // 선거 핵심 일정 자동 등록 (최초 1회)
-  const existing = await db.get('SELECT COUNT(*) as cnt FROM schedules');
-  if (parseInt(existing.cnt) === 0) {
-    await seedElectionSchedules();
-  }
+  // 선거 핵심 일정 + 기본 채팅방 항상 보장 (ON CONFLICT DO NOTHING으로 중복 안전)
+  await seedElectionSchedules();
 
   // 채팅방 이름 마이그레이션
   await db.run(`UPDATE rooms SET name = '홍캠프 보안 채팅방', description = '홍성훈 캠프 전용 보안 채팅방' WHERE id = 'room_general'`);

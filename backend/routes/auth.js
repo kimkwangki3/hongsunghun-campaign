@@ -60,6 +60,14 @@ router.post('/login', async (req, res) => {
       return res.status(401).json({ success: false, message: '비밀번호가 틀렸습니다' });
     }
 
+    // 기본 채팅방 멤버십 보장 (혹시 누락된 경우 대비)
+    for (const roomId of ['room_announce', 'room_general']) {
+      await db.run(
+        'INSERT INTO room_members (room_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+        [roomId, user.id]
+      );
+    }
+
     const token = signToken({ id: user.id, name: user.name, role: user.role });
     res.json({
       success: true,
