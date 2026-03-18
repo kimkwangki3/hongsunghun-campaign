@@ -1,0 +1,37 @@
+# 의존성
+node_modules/
+backend/node_modules/
+frontend/node_modules/
+
+# 빌드 결과물
+frontend/dist/
+backend/public/
+
+# 환경변수 (절대 커밋 금지)
+.env
+.env.local
+.env.production
+backend/.env
+frontend/.env
+frontend/.env.local
+
+# SQLite DB 파일
+*.db
+*.db-shm
+*.db-wal
+
+# 로그
+*.log
+npm-debug.log*
+
+# OS 파일
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Capacitor / Android 빌드
+android/
+ios/

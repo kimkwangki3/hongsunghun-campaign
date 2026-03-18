@@ -1,0 +1,13 @@
+{
+  "name": "hongsunghun-campaign",
+  "version": "1.0.0",
+  "description": "홍성훈 캠프 보안 채팅·일정 관리 시스템",
+  "private": true,
+  "scripts": {
+    "dev":        "bash start.sh dev",
+    "build":      "cd frontend && npm install && npm run build && mkdir -p ../backend/public && cp -r dist/* ../backend/public",
+    "admin":      "node scripts/create-admin.js",
+    "apk":        "bash start.sh apk",
+    "install:all":"npm --prefix backend install && npm --prefix frontend install"
+  }
+}

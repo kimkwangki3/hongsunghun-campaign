@@ -1,0 +1,76 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --camp-bg:      #0d0d1a;
+  --camp-surface: #111127;
+  --camp-border:  rgba(255,255,255,0.08);
+  --camp-accent:  #818cf8;
+  --camp-primary: #4f46e5;
+  --camp-purple:  #7c3aed;
+  --camp-text:    #e8e8f0;
+  --camp-muted:   #50507a;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body, #root {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overscroll-behavior: none;
+  background: var(--camp-bg);
+  color: var(--camp-text);
+  font-family: 'Noto Sans KR', sans-serif;
+}
+
+/* 스크롤바 커스텀 */
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(129,140,248,0.2); border-radius: 2px; }
+
+/* 입력창 자동완성 배경 제거 */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-text-fill-color: #e0e0ff;
+  -webkit-box-shadow: 0 0 0px 1000px #1a1a30 inset;
+  transition: background-color 5000s ease-in-out 0s;
+}
+
+/* date/time input 다크 스타일 */
+input[type="date"],
+input[type="time"] {
+  color-scheme: dark;
+}
+
+/* 선택 색상 */
+::selection {
+  background: rgba(79,70,229,0.3);
+  color: #fff;
+}
+
+/* 애니메이션 키프레임 */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+@keyframes pulse-glow {
+  0%, 100% { box-shadow: 0 0 20px rgba(79,70,229,0.3); }
+  50%       { box-shadow: 0 0 40px rgba(79,70,229,0.6); }
+}
+@keyframes bounce-dot {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30%           { transform: translateY(-5px); opacity: 1; }
+}
