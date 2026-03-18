@@ -114,6 +114,10 @@ async function initDB() {
     await seedElectionSchedules();
   }
 
+  // 채팅방 이름 마이그레이션
+  await db.run(`UPDATE rooms SET name = '홍캠프 보안 채팅방', description = '홍성훈 캠프 전용 보안 채팅방' WHERE id = 'room_general'`);
+  await db.run(`UPDATE rooms SET name = '📢 공지', description = '캠프 공지 채널' WHERE id = 'room_announce'`);
+
   console.log('✅ DB 초기화 완료');
 }
 
