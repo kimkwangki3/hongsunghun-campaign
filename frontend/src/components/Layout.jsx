@@ -43,9 +43,8 @@ export default function Layout() {
 
   const { connected } = useSocket({
     onNewMessage: (msg) => {
-      // 현재 보고 있는 방이 아닌 곳에서 온 메시지만 알림
-      // (같은 탭/다른 탭 상관없이, 현재 열린 채팅방 기준)
-      if (msg.roomId !== currentRoomId) {
+      // 내가 보낸 메시지가 아니면 어디서든 알림
+      if (msg.senderId !== user?.id) {
         const text = `💬 ${msg.senderName}: ${msg.content.substring(0, 40)}`;
         showToast(text);
         sendBrowserNotification('💬 새 메시지', `${msg.senderName}: ${msg.content.substring(0, 60)}`);
@@ -55,6 +54,7 @@ export default function Layout() {
   });
 
   const NAV = [
+    { path:'/',              label:'홈',    icon: HomeIcon    },
     { path:'/chat',          label:'채팅',  icon: ChatIcon    },
     { path:'/schedule',      label:'일정',  icon: CalIcon     },
     { path:'/notifications', label:'알림',  icon: BellIcon    },
@@ -116,7 +116,7 @@ export default function Layout() {
           paddingBottom:'env(safe-area-inset-bottom)', flexShrink:0
         }}>
           {NAV.map(({ path, label, icon: Icon }) => {
-            const active = location.pathname.startsWith(path);
+            const active = path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
             const badge = label === '채팅' && totalUnread > 0 ? totalUnread : 0;
             return (
               <button key={path} onClick={() => navigate(path)} style={{
@@ -180,6 +180,9 @@ export default function Layout() {
   );
 }
 
+function HomeIcon({ size=24, color='currentColor' }) {
+  return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9.5L12 3l9 6.5V20a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9.5z"/><polyline points="9 21 9 12 15 12 15 21"/></svg>;
+}
 function ChatIcon({ size=24, color='currentColor' }) {
   return <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>;
 }

@@ -9,6 +9,7 @@ import SchedulePage from './pages/SchedulePage';
 import ScheduleAddPage from './pages/ScheduleAddPage';
 import NotificationPage from './pages/NotificationPage';
 import AdminPage from './pages/AdminPage';
+import HomePage from './pages/HomePage';
 import { initPushNotifications } from './utils/pushManager';
 
 function ProtectedRoute({ children }) {
@@ -32,7 +33,7 @@ export default function App() {
             <Layout />
           </ProtectedRoute>
         }>
-          <Route index element={<Navigate to="/chat" replace />} />
+          <Route index element={<HomePage />} />
           <Route path="chat" element={<ChatRoomPage />} />
           <Route path="chat/:roomId" element={<ChatPage />} />
           <Route path="schedule" element={<SchedulePage />} />

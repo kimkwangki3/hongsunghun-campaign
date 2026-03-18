@@ -16,23 +16,33 @@ export default function ChatRoomPage() {
 
   useEffect(() => {
     api.get('/chat/rooms').then(r => {
-      setRooms(r.data.data);
+      const all = r.data.data;
+      setRooms(all);
+      // 공지방 제외한 목록
+      const chatRooms = all.filter(r => r.type !== 'announce');
+      // 채팅방이 1개면 바로 입장
+      if (chatRooms.length === 1) {
+        navigate(`/chat/${chatRooms[0].id}`, { replace: true });
+        return;
+      }
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
 
   if (loading) return <LoadingScreen />;
 
+  const chatRooms = rooms.filter(r => r.type !== 'announce');
+
   return (
     <div style={{
       height: '100%', overflowY: 'auto', overscrollBehavior: 'contain',
       padding: '0 0 8px'
     }}>
-      {rooms.length === 0 ? (
+      {chatRooms.length === 0 ? (
         <EmptyState />
       ) : (
         <div>
-          {rooms.map(room => (
+          {chatRooms.map(room => (
             <RoomItem key={room.id} room={room} onClick={() => navigate(`/chat/${room.id}`)} />
           ))}
         </div>
