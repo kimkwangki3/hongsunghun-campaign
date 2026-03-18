@@ -20,6 +20,7 @@ export default function ChatPage() {
   const [readerPopup, setReaderPopup] = useState(null); // { msgId, readers, anchor }
   const [uploading, setUploading] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
+  const [imageViewer, setImageViewer] = useState(null); // base64 or url
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -80,23 +81,20 @@ export default function ChatPage() {
   });
 
   useEffect(() => {
-    Promise.all([
-      api.get(`/chat/rooms/${roomId}`),
-      api.get(`/chat/rooms/${roomId}/messages?limit=50`)
-    ]).then(([roomRes, msgsRes]) => {
-      setRoomInfo(roomRes.data.data);
+    // 방 이름을 메시지와 독립적으로 즉시 표시
+    api.get(`/chat/rooms/${roomId}`)
+      .then(r => setRoomInfo(r.data.data));
 
-      const msgs = msgsRes.data.data;
-      setMessages(roomId, msgs);
-      clearUnread(roomId);
-
-      // 초기 읽음 수 세팅
-      const counts = {};
-      msgs.forEach(m => { counts[m.id] = m.readCount || 0; });
-      setReadCounts(counts);
-
-      socket?.emit('read_messages', { roomId });
-    });
+    api.get(`/chat/rooms/${roomId}/messages?limit=50`)
+      .then(msgsRes => {
+        const msgs = msgsRes.data.data;
+        setMessages(roomId, msgs);
+        clearUnread(roomId);
+        const counts = {};
+        msgs.forEach(m => { counts[m.id] = m.readCount || 0; });
+        setReadCounts(counts);
+        socket?.emit('read_messages', { roomId });
+      });
   }, [roomId]);
 
   useEffect(() => {
@@ -265,7 +263,12 @@ export default function ChatPage() {
                   </span>
                 )}
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, flexDirection: isMine ? 'row-reverse' : 'row' }}>
-                  <MessageContent msg={msg} isMine={isMine} />
+                  <MessageContent
+                    msg={msg}
+                    isMine={isMine}
+                    onViewImage={setImageViewer}
+                    onImageLoad={() => bottomRef.current?.scrollIntoView({ behavior: 'instant' })}
+                  />
 
                   {/* 시간 + 안 읽은 수 */}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: isMine ? 'flex-end' : 'flex-start', gap: 2, marginBottom: 2 }}>
@@ -342,6 +345,38 @@ export default function ChatPage() {
               </div>
             ))
           }
+        </div>
+      )}
+
+      {/* 이미지 전체화면 뷰어 */}
+      {imageViewer && (
+        <div
+          onClick={() => setImageViewer(null)}
+          style={{
+            position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.92)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            zIndex: 300
+          }}
+        >
+          <button
+            onClick={() => setImageViewer(null)}
+            style={{
+              position: 'absolute', top: 16, right: 16,
+              background: 'rgba(255,255,255,0.15)', border: 'none',
+              color: '#fff', fontSize: 22, width: 40, height: 40,
+              borderRadius: '50%', cursor: 'pointer', lineHeight: 1
+            }}
+          >✕</button>
+          <img
+            src={imageViewer}
+            alt="이미지 보기"
+            onClick={e => e.stopPropagation()}
+            style={{
+              maxWidth: '95vw', maxHeight: '90vh',
+              borderRadius: 10, objectFit: 'contain',
+              boxShadow: '0 8px 40px rgba(0,0,0,0.6)'
+            }}
+          />
         </div>
       )}
 
@@ -458,7 +493,7 @@ export default function ChatPage() {
   );
 }
 
-function MessageContent({ msg, isMine }) {
+function MessageContent({ msg, isMine, onViewImage, onImageLoad }) {
   const bubbleStyle = {
     borderRadius: isMine ? '16px 4px 16px 16px' : '4px 16px 16px 16px',
     background: isMine ? 'linear-gradient(135deg, #4f46e5, #6d28d9)' : 'rgba(255,255,255,0.08)',
@@ -480,10 +515,11 @@ function MessageContent({ msg, isMine }) {
             <img
               src={imgSrc}
               alt={parsed.name || '이미지'}
-              onClick={() => window.open(imgSrc, '_blank')}
+              onClick={() => onViewImage?.(imgSrc)}
+              onLoad={onImageLoad}
               style={{
                 maxWidth: 220, maxHeight: 280, borderRadius: isMine ? '13px 2px 13px 13px' : '2px 13px 13px 13px',
-                display: 'block', cursor: 'pointer', objectFit: 'cover'
+                display: 'block', cursor: 'zoom-in', objectFit: 'cover'
               }}
             />
           </div>
