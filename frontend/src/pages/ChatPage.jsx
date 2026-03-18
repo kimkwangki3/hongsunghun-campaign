@@ -18,8 +18,10 @@ export default function ChatPage() {
   const [onlineCount, setOnlineCount] = useState(0);
   const [readCounts, setReadCounts] = useState({}); // { msgId: number }
   const [readerPopup, setReaderPopup] = useState(null); // { msgId, readers, anchor }
+  const [uploading, setUploading] = useState(false);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
+  const fileInputRef = useRef(null);
   const typingTimer = useRef(null);
 
   const { socket } = useSocket({
@@ -94,6 +96,26 @@ export default function ChatPage() {
     socket?.emit('typing', { roomId });
     clearTimeout(typingTimer.current);
     typingTimer.current = setTimeout(() => {}, 2000);
+  }
+
+  async function handleFileChange(e) {
+    const file = e.target.files?.[0];
+    if (!file || !socket) return;
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const res = await api.post('/chat/upload', formData);
+      const { url, name, type } = res.data.data;
+      // 파일 URL을 메시지로 전송 (content = JSON)
+      const content = JSON.stringify({ url, name, type });
+      socket.emit('send_message', { roomId, content, type });
+    } catch (err) {
+      console.error('파일 업로드 실패:', err);
+    } finally {
+      setUploading(false);
+      e.target.value = '';
+    }
   }
 
   async function openReaderPopup(e, msgId) {
@@ -177,18 +199,7 @@ export default function ChatPage() {
                   </span>
                 )}
                 <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, flexDirection: isMine ? 'row-reverse' : 'row' }}>
-                  <div style={{
-                    padding: '9px 13px',
-                    borderRadius: isMine ? '16px 4px 16px 16px' : '4px 16px 16px 16px',
-                    background: isMine
-                      ? 'linear-gradient(135deg, #4f46e5, #6d28d9)'
-                      : 'rgba(255,255,255,0.08)',
-                    color: '#e8e8f8', fontSize: 14, lineHeight: 1.5,
-                    wordBreak: 'break-word', whiteSpace: 'pre-wrap',
-                    boxShadow: isMine ? '0 2px 12px rgba(79,70,229,0.3)' : 'none'
-                  }}>
-                    {msg.content}
-                  </div>
+                  <MessageContent msg={msg} isMine={isMine} />
 
                   {/* 시간 + 안 읽은 수 */}
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: isMine ? 'flex-end' : 'flex-start', gap: 2, marginBottom: 2 }}>
@@ -236,6 +247,7 @@ export default function ChatPage() {
             30% { transform: translateY(-4px); opacity: 1; }
           }
         `}</style>
+
       </div>
 
       {/* 읽은 사람 팝업 */}
@@ -276,6 +288,34 @@ export default function ChatPage() {
         display: 'flex', alignItems: 'flex-end', gap: 8,
         flexShrink: 0
       }}>
+        {/* 파일 첨부 hidden input */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.zip,.txt"
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
+
+        {/* 첨부 버튼 */}
+        <button
+          onClick={() => fileInputRef.current?.click()}
+          disabled={uploading}
+          style={{
+            width: 42, height: 42, borderRadius: '50%', border: 'none',
+            background: 'rgba(255,255,255,0.07)', cursor: uploading ? 'not-allowed' : 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0, opacity: uploading ? 0.5 : 1
+          }}
+        >
+          {uploading
+            ? <span style={{ fontSize: 18 }}>⏳</span>
+            : <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#8080b0" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+              </svg>
+          }
+        </button>
+
         <textarea
           ref={inputRef}
           value={input}
@@ -311,6 +351,65 @@ export default function ChatPage() {
           </svg>
         </button>
       </div>
+    </div>
+  );
+}
+
+function MessageContent({ msg, isMine }) {
+  const bubbleStyle = {
+    borderRadius: isMine ? '16px 4px 16px 16px' : '4px 16px 16px 16px',
+    background: isMine ? 'linear-gradient(135deg, #4f46e5, #6d28d9)' : 'rgba(255,255,255,0.08)',
+    color: '#e8e8f8', fontSize: 14, lineHeight: 1.5,
+    boxShadow: isMine ? '0 2px 12px rgba(79,70,229,0.3)' : 'none',
+    overflow: 'hidden'
+  };
+
+  // 파일/이미지 메시지 파싱
+  if (msg.type === 'image' || msg.type === 'file') {
+    let parsed = null;
+    try { parsed = JSON.parse(msg.content); } catch {}
+
+    if (parsed?.url) {
+      if (msg.type === 'image') {
+        return (
+          <div style={{ ...bubbleStyle, padding: 4 }}>
+            <img
+              src={parsed.url}
+              alt={parsed.name || '이미지'}
+              onClick={() => window.open(parsed.url, '_blank')}
+              style={{
+                maxWidth: 220, maxHeight: 280, borderRadius: isMine ? '13px 2px 13px 13px' : '2px 13px 13px 13px',
+                display: 'block', cursor: 'pointer', objectFit: 'cover'
+              }}
+            />
+          </div>
+        );
+      } else {
+        return (
+          <a
+            href={parsed.url}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              ...bubbleStyle, padding: '10px 14px',
+              display: 'flex', alignItems: 'center', gap: 10,
+              textDecoration: 'none'
+            }}
+          >
+            <span style={{ fontSize: 24, flexShrink: 0 }}>📎</span>
+            <span style={{ fontSize: 13, color: '#c8c8f8', wordBreak: 'break-all' }}>
+              {parsed.name || '파일 다운로드'}
+            </span>
+          </a>
+        );
+      }
+    }
+  }
+
+  // 일반 텍스트 메시지
+  return (
+    <div style={{ ...bubbleStyle, padding: '9px 13px', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>
+      {msg.content}
     </div>
   );
 }

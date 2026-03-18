@@ -1,9 +1,34 @@
 // routes/chat.js — Agent: BACKEND (pg version)
 const router = require('express').Router();
 const { v4: uuidv4 } = require('uuid');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const { db } = require('../database');
 const { requireAdmin } = require('../middleware/auth');
-const { decrypt } = require('../utils/encryption');
+const { decrypt, encrypt } = require('../utils/encryption');
+
+// 업로드 디렉토리
+const uploadsDir = path.join(__dirname, '../public/uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+const storage = multer.diskStorage({
+  destination: uploadsDir,
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${uuidv4()}${ext}`);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
+  fileFilter: (req, file, cb) => {
+    const allowed = /\.(jpg|jpeg|png|gif|webp|pdf|doc|docx|xls|xlsx|ppt|pptx|zip|txt|mp4|mov)$/i;
+    if (allowed.test(path.extname(file.originalname))) cb(null, true);
+    else cb(new Error('지원하지 않는 파일 형식'));
+  }
+});
 
 // GET /api/v1/chat/rooms — 내 채팅방 목록
 router.get('/rooms', async (req, res) => {
@@ -162,6 +187,21 @@ router.get('/messages/:messageId/readers', async (req, res) => {
     console.error(err);
     res.status(500).json({ success: false, message: '서버 오류' });
   }
+});
+
+// POST /api/v1/chat/upload — 파일 업로드
+router.post('/upload', upload.single('file'), (req, res) => {
+  if (!req.file) return res.status(400).json({ success: false, message: '파일 없음' });
+  const imageExts = /\.(jpg|jpeg|png|gif|webp)$/i;
+  const isImage = imageExts.test(req.file.originalname);
+  res.json({
+    success: true,
+    data: {
+      url: `/uploads/${req.file.filename}`,
+      name: Buffer.from(req.file.originalname, 'latin1').toString('utf8'),
+      type: isImage ? 'image' : 'file'
+    }
+  });
 });
 
 // GET /api/v1/chat/members — 전체 캠프원 목록
