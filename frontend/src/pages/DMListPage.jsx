@@ -19,7 +19,8 @@ export default function DMListPage() {
     if (isAdmin) requests.push(api.get('/chat/admin/dms'));
 
     Promise.all(requests).then(([membersRes, roomsRes, adminDmsRes]) => {
-      const allMembers = (membersRes.data.data || []).filter(m => m.id !== user?.id);
+      // admin은 1:1 대화 대상에서 제외
+      const allMembers = (membersRes.data.data || []).filter(m => m.id !== user?.id && m.role !== 'admin');
       setMembers(allMembers);
 
       const rooms = (roomsRes.data.data || []).filter(r => r.type === 'direct');

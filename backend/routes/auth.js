@@ -2,7 +2,7 @@
 const router = require('express').Router();
 const { v4: uuidv4 } = require('uuid');
 const { db } = require('../database');
-const { signToken, verifyToken } = require('../middleware/auth');
+const { signToken, verifyToken, requireAdmin } = require('../middleware/auth');
 
 // POST /api/v1/auth/register
 router.post('/register', async (req, res) => {
@@ -109,6 +109,53 @@ router.get('/me', verifyToken, async (req, res) => {
   try {
     const user = await db.get('SELECT id, name, role, created_at FROM users WHERE id = $1', [req.user.id]);
     res.json({ success: true, data: user });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: '서버 오류' });
+  }
+});
+
+// GET /api/v1/auth/users — 전체 회원 목록 (admin)
+router.get('/users', verifyToken, requireAdmin, async (req, res) => {
+  try {
+    const users = await db.all(
+      "SELECT id, name, role, created_at FROM users WHERE id != 'system' ORDER BY created_at ASC"
+    );
+    res.json({ success: true, data: users });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: '서버 오류' });
+  }
+});
+
+// PUT /api/v1/auth/users/:id/role — 역할 변경 (admin)
+router.put('/users/:id/role', verifyToken, requireAdmin, async (req, res) => {
+  try {
+    const { role } = req.body;
+    if (!['admin', 'member'].includes(role)) {
+      return res.status(400).json({ success: false, message: '유효하지 않은 역할' });
+    }
+    const user = await db.get('SELECT id FROM users WHERE id = $1', [req.params.id]);
+    if (!user) return res.status(404).json({ success: false, message: '회원 없음' });
+
+    await db.run('UPDATE users SET role = $1 WHERE id = $2', [role, req.params.id]);
+    res.json({ success: true, message: '역할 변경 완료' });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ success: false, message: '서버 오류' });
+  }
+});
+
+// DELETE /api/v1/auth/users/:id — 회원 삭제 (admin)
+router.delete('/users/:id', verifyToken, requireAdmin, async (req, res) => {
+  try {
+    if (req.params.id === req.user.id) {
+      return res.status(400).json({ success: false, message: '본인 계정은 삭제할 수 없습니다' });
+    }
+    await db.run('DELETE FROM room_members WHERE user_id = $1', [req.params.id]);
+    await db.run('DELETE FROM device_tokens WHERE user_id = $1', [req.params.id]);
+    await db.run('DELETE FROM users WHERE id = $1', [req.params.id]);
+    res.json({ success: true, message: '회원 삭제 완료' });
   } catch (err) {
     console.error(err);
     res.status(500).json({ success: false, message: '서버 오류' });

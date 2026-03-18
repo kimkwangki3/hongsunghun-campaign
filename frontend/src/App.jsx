@@ -9,12 +9,27 @@ import SchedulePage from './pages/SchedulePage';
 import ScheduleAddPage from './pages/ScheduleAddPage';
 import DMListPage from './pages/DMListPage';
 import AdminPage from './pages/AdminPage';
+import MembersAdminPage from './pages/MembersAdminPage';
 import HomePage from './pages/HomePage';
 import { initPushNotifications } from './utils/pushManager';
 
+function isTokenValid(token) {
+  if (!token) return false;
+  try {
+    const payload = JSON.parse(atob(token.split('.')[1]));
+    return payload.exp * 1000 > Date.now();
+  } catch {
+    return false;
+  }
+}
+
 function ProtectedRoute({ children }) {
-  const token = useAuthStore(s => s.token);
-  return token ? children : <Navigate to="/login" replace />;
+  const { token, logout } = useAuthStore(s => ({ token: s.token, logout: s.logout }));
+  if (!isTokenValid(token)) {
+    if (token) logout(); // 만료된 토큰 정리
+    return <Navigate to="/login" replace />;
+  }
+  return children;
 }
 
 export default function App() {
@@ -40,6 +55,7 @@ export default function App() {
           <Route path="schedule/add" element={<ScheduleAddPage />} />
           <Route path="dm" element={<DMListPage />} />
           <Route path="admin" element={<AdminPage />} />
+          <Route path="admin/members" element={<MembersAdminPage />} />
         </Route>
       </Routes>
     </BrowserRouter>

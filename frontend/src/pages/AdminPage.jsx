@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { api } from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 
@@ -10,6 +11,7 @@ const inputSt = {
 };
 
 export default function AdminPage() {
+  const navigate = useNavigate();
   const user = useAuthStore(s => s.user);
   const [members, setMembers] = useState([]);
   const [broadcast, setBroadcast] = useState({ title:'', body:'' });
@@ -52,6 +54,23 @@ export default function AdminPage() {
       <div style={{ fontSize:18, fontWeight:700, color:'#e0e0f8', marginBottom:16 }}>
         ⚙️ 관리자 패널
       </div>
+
+      {/* 회원 관리 바로가기 */}
+      <button onClick={() => navigate('/admin/members')} style={{
+        width:'100%', padding:'14px 16px', borderRadius:12, border:'none',
+        background:'rgba(129,140,248,0.1)', cursor:'pointer', marginBottom:16,
+        display:'flex', alignItems:'center', justifyContent:'space-between',
+        fontFamily:"'Noto Sans KR', sans-serif"
+      }}>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <span style={{ fontSize:20 }}>👥</span>
+          <div style={{ textAlign:'left' }}>
+            <div style={{ fontSize:14, fontWeight:600, color:'#818cf8' }}>회원 관리</div>
+            <div style={{ fontSize:11, color:'#50507a', marginTop:1 }}>역할 변경 · 회원 삭제</div>
+          </div>
+        </div>
+        <span style={{ color:'#818cf8', fontSize:18 }}>›</span>
+      </button>
 
       {/* 탭 */}
       <div style={{ display:'flex', gap:8, marginBottom:20 }}>

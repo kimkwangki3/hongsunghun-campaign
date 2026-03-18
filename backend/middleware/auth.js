@@ -25,7 +25,7 @@ function requireAdmin(req, res, next) {
 }
 
 function signToken(payload) {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: '24h' });
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: '365d' });
 }
 
 function verifyToken_raw(token) {
