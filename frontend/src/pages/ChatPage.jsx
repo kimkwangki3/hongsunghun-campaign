@@ -23,7 +23,30 @@ export default function ChatPage() {
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
+  const containerRef = useRef(null);
   const typingTimer = useRef(null);
+
+  // 모바일 키보드 대응: visualViewport로 컨테이너 높이 동적 조정
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => {
+      if (containerRef.current) {
+        containerRef.current.style.height = `${vv.height}px`;
+        containerRef.current.style.top = `${vv.offsetTop}px`;
+      }
+      requestAnimationFrame(() => {
+        bottomRef.current?.scrollIntoView({ behavior: 'instant' });
+      });
+    };
+    vv.addEventListener('resize', update);
+    vv.addEventListener('scroll', update);
+    update();
+    return () => {
+      vv.removeEventListener('resize', update);
+      vv.removeEventListener('scroll', update);
+    };
+  }, []);
 
   const { socket } = useSocket({
     onNewMessage: (msg) => {
@@ -138,7 +161,14 @@ export default function ChatPage() {
 
   return (
     <div
-      style={{ display: 'flex', flexDirection: 'column', height: '100%', background: '#0d0d1a' }}
+      ref={containerRef}
+      style={{
+        display: 'flex', flexDirection: 'column',
+        position: 'fixed', left: '50%', transform: 'translateX(-50%)',
+        width: '100%', maxWidth: 600,
+        top: 0, height: '100dvh',
+        background: '#0d0d1a', zIndex: 10
+      }}
       onClick={() => setReaderPopup(null)}
     >
       {/* 헤더 */}
@@ -383,7 +413,10 @@ export default function ChatPage() {
             fontFamily: "'Noto Sans KR', sans-serif", lineHeight: 1.5,
             maxHeight: 100, overflowY: 'auto', transition: 'border-color 0.2s'
           }}
-          onFocus={e => e.target.style.borderColor = 'rgba(129,140,248,0.4)'}
+          onFocus={e => {
+            e.target.style.borderColor = 'rgba(129,140,248,0.4)';
+            setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: 'instant' }), 350);
+          }}
           onBlur={e => e.target.style.borderColor = 'rgba(255,255,255,0.1)'}
         />
         <button
