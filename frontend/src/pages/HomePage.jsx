@@ -1,8 +1,9 @@
 // src/pages/HomePage.jsx
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../utils/api';
 import { useAuthStore } from '../store/authStore';
+import { useSocket } from '../hooks/useSocket';
 import { format, differenceInDays } from 'date-fns';
 import { ko } from 'date-fns/locale';
 
@@ -26,6 +27,13 @@ export default function HomePage() {
   const [schedules, setSchedules] = useState([]);
   const [loading, setLoading] = useState(true);
 
+  const fetchRooms = useCallback(() => {
+    api.get('/chat/rooms')
+      .then(r => setRooms(r.data.data || []))
+      .catch(() => {});
+  }, []);
+
+  // 초기 로드
   useEffect(() => {
     let done = 0;
     const finish = () => { if (++done === 2) setLoading(false); };
@@ -38,7 +46,6 @@ export default function HomePage() {
     api.get('/schedule/upcoming')
       .then(r => setSchedules(r.data.data || []))
       .catch(() => {
-        // /upcoming 없으면 일반 목록에서 필터링
         const now = Math.floor(Date.now() / 1000);
         api.get('/schedule')
           .then(r => setSchedules((r.data.data || []).filter(s => s.start_at >= now).slice(0, 5)))
@@ -46,6 +53,25 @@ export default function HomePage() {
       })
       .finally(finish);
   }, []);
+
+  // 탭 전환으로 돌아올 때 재조회 (채팅방 읽고 홈 돌아오면 0으로 갱신)
+  useEffect(() => {
+    const onVisible = () => { if (document.visibilityState === 'visible') fetchRooms(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [fetchRooms]);
+
+  // 소켓: 새 메시지 수신 시 해당 방 unread_count 실시간 증가
+  useSocket({
+    onNewMessage: (msg) => {
+      if (msg.senderId === user?.id) return; // 내가 보낸 건 무시
+      setRooms(prev => prev.map(r =>
+        r.id === msg.roomId
+          ? { ...r, unread_count: (parseInt(r.unread_count) || 0) + 1, lastMessage: msg.content }
+          : r
+      ));
+    },
+  });
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);

@@ -1,6 +1,6 @@
 // src/pages/ChatPage.jsx
 import React, { useEffect, useRef, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { api } from '../utils/api';
 import { useAuthStore, useChatStore } from '../store/stores';
 import { useSocket } from '../hooks/useSocket';
@@ -8,6 +8,8 @@ import { useSocket } from '../hooks/useSocket';
 export default function ChatPage() {
   const { roomId } = useParams();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const readOnly = searchParams.get('readonly') === '1';
   const user = useAuthStore(s => s.user);
   const { messages, setMessages, addMessage, clearUnread } = useChatStore();
   const roomMessages = messages[roomId] || [];
@@ -21,6 +23,8 @@ export default function ChatPage() {
   const [uploading, setUploading] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [imageViewer, setImageViewer] = useState(null); // base64 or url
+  const [firstUnreadId, setFirstUnreadId] = useState(null); // 첫 미읽은 메시지 ID
+  const unreadDividerRef = useRef(null);
   const bottomRef = useRef(null);
   const inputRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -53,7 +57,8 @@ export default function ChatPage() {
     onNewMessage: (msg) => {
       if (msg.roomId === roomId) {
         addMessage(roomId, msg);
-        socket?.emit('read_messages', { roomId });
+        setFirstUnreadId(null);
+        if (!readOnly) socket?.emit('read_messages', { roomId });
       }
     },
     onMessagesCleared: ({ roomId: rId }) => {
@@ -93,12 +98,22 @@ export default function ChatPage() {
         const counts = {};
         msgs.forEach(m => { counts[m.id] = m.readCount || 0; });
         setReadCounts(counts);
-        socket?.emit('read_messages', { roomId });
+
+        // 내가 보내지 않은 메시지 중 처음 안 읽은 것 찾기
+        const firstUnread = msgs.find(m => m.senderId !== user?.id && !m.readByMe);
+        setFirstUnreadId(firstUnread?.id || null);
+
+        if (!readOnly) socket?.emit('read_messages', { roomId });
       });
   }, [roomId]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    // 미읽은 메시지가 있으면 구분선으로, 없으면 맨 아래로 스크롤
+    if (firstUnreadId && unreadDividerRef.current) {
+      unreadDividerRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    } else {
+      bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
   }, [roomMessages.length]);
 
   function handleSend() {
@@ -194,7 +209,7 @@ export default function ChatPage() {
         display: 'flex', alignItems: 'center', gap: 12,
         flexShrink: 0
       }}>
-        <button onClick={() => navigate('/')} style={{
+        <button onClick={() => navigate(-1)} style={{
           background: 'none', border: 'none', cursor: 'pointer',
           color: '#818cf8', padding: '4px 8px 4px 0', fontSize: 20
         }}>←</button>
@@ -207,7 +222,7 @@ export default function ChatPage() {
             {typingUsers.length > 0 ? ` · ${typingUsers.join(', ')} 입력 중...` : ''}
           </div>
         </div>
-        {user?.role === 'admin' && (
+        {user && (
           <button onClick={() => setShowClearConfirm(true)} style={{
             background: 'none', border: 'none', cursor: 'pointer',
             color: '#ef4444', fontSize: 11, padding: '4px 8px',
@@ -237,7 +252,21 @@ export default function ChatPage() {
           const unread = isMine ? Math.max(0, (memberCount - 1) - readCount) : 0;
 
           return (
-            <div key={msg.id} style={{
+            <React.Fragment key={msg.id}>
+              {/* 읽지 않은 메시지 구분선 */}
+              {msg.id === firstUnreadId && (
+                <div ref={unreadDividerRef} style={{
+                  display: 'flex', alignItems: 'center', gap: 10,
+                  margin: '12px 0 4px'
+                }}>
+                  <div style={{ flex: 1, height: 1, background: 'rgba(250,204,21,0.3)' }} />
+                  <span style={{ fontSize: 11, color: '#facc15', fontWeight: 600, whiteSpace: 'nowrap' }}>
+                    여기부터 읽지 않은 메시지
+                  </span>
+                  <div style={{ flex: 1, height: 1, background: 'rgba(250,204,21,0.3)' }} />
+                </div>
+              )}
+            <div style={{
               display: 'flex',
               flexDirection: isMine ? 'row-reverse' : 'row',
               alignItems: 'flex-end', gap: 6,
@@ -292,6 +321,7 @@ export default function ChatPage() {
                 </div>
               </div>
             </div>
+            </React.Fragment>
           );
         })}
 
@@ -414,8 +444,17 @@ export default function ChatPage() {
         </div>
       )}
 
-      {/* 입력창 */}
-      <div style={{
+      {/* 입력창 — 읽기 전용(admin 감시 모드)이면 숨김 */}
+      {readOnly && (
+        <div style={{
+          padding: '10px 16px', background: '#111127',
+          borderTop: '1px solid rgba(255,255,255,0.06)',
+          textAlign: 'center', fontSize: 12, color: '#50507a', flexShrink: 0
+        }}>
+          🔒 관리자 열람 전용 — 메시지를 보낼 수 없습니다
+        </div>
+      )}
+      {!readOnly && <div style={{
         padding: '10px 12px',
         paddingBottom: 'calc(10px + env(safe-area-inset-bottom))',
         background: '#111127',
@@ -488,7 +527,7 @@ export default function ChatPage() {
               stroke={input.trim() ? '#fff' : '#404060'} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
           </svg>
         </button>
-      </div>
+      </div>}
     </div>
   );
 }

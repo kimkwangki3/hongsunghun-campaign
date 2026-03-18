@@ -108,6 +108,9 @@ async function initDB() {
     );
   `);
 
+  // cleared_at 컬럼 마이그레이션 (없으면 추가)
+  await db.run(`ALTER TABLE rooms ADD COLUMN IF NOT EXISTS cleared_at INTEGER DEFAULT 0`);
+
   // 선거 핵심 일정 + 기본 채팅방 항상 보장 (ON CONFLICT DO NOTHING으로 중복 안전)
   await seedElectionSchedules();
 

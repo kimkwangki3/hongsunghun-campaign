@@ -23,7 +23,7 @@ export default function LoginPage() {
       const res = await api.post(endpoint, payload);
       const { token, user } = res.data.data;
       setAuth(token, user);
-      navigate('/chat', { replace: true });
+      navigate('/', { replace: true });
     } catch (err) {
       setError(err.response?.data?.message || '오류가 발생했습니다');
     } finally {

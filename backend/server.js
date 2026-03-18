@@ -104,6 +104,19 @@ io.on('connection', async (socket) => {
       // 같은 방 모두에게 전송
       io.to(roomId).emit('new_message', message);
 
+      // DM(direct) 방이면 admin에게도 소켓 알림 전송 (admin은 방 멤버가 아님)
+      const roomInfo = await db.get('SELECT name, type FROM rooms WHERE id = $1', [roomId]);
+      if (roomInfo?.type === 'direct') {
+        const admins = await db.all(
+          "SELECT id FROM users WHERE role = 'admin' AND id != $1",
+          [userId]
+        );
+        admins.forEach(a => {
+          const adminSid = onlineUsers.get(a.id);
+          if (adminSid) io.to(adminSid).emit('new_message', message);
+        });
+      }
+
       // 오프라인 멤버에게 FCM 푸시
       const offlineMembers = await db.all(`
         SELECT u.id, dt.token FROM room_members rm
@@ -112,13 +125,24 @@ io.on('connection', async (socket) => {
         WHERE rm.room_id = $1 AND u.id != $2
       `, [roomId, userId]);
 
-      const offlineTokens = offlineMembers
-        .filter(m => !onlineUsers.has(m.id))
-        .map(m => m.token)
-        .filter(Boolean);
+      // DM이면 오프라인 admin도 FCM 대상에 포함
+      let extraTokens = [];
+      if (roomInfo?.type === 'direct') {
+        const adminTokens = await db.all(`
+          SELECT dt.token FROM users u
+          JOIN device_tokens dt ON dt.user_id = u.id
+          WHERE u.role = 'admin' AND u.id != $1
+        `, [userId]);
+        extraTokens = adminTokens.map(t => t.token).filter(Boolean)
+          .filter(t => !offlineMembers.some(m => m.token === t));
+      }
+
+      const offlineTokens = [
+        ...offlineMembers.filter(m => !onlineUsers.has(m.id)).map(m => m.token).filter(Boolean),
+        ...extraTokens
+      ];
 
       if (offlineTokens.length > 0) {
-        const roomInfo = await db.get('SELECT name FROM rooms WHERE id = $1', [roomId]);
         sendPush(offlineTokens, {
           title: `💬 ${roomInfo?.name || '새 메시지'}`,
           body: `${sender.name}: ${content.substring(0, 50)}`,
@@ -139,6 +163,13 @@ io.on('connection', async (socket) => {
   // 메시지 읽음 처리
   socket.on('read_messages', async ({ roomId }) => {
     try {
+      // admin이 DM방을 열람할 때는 읽음 처리 하지 않음
+      const { role } = socket.user;
+      if (role === 'admin') {
+        const room = await db.get('SELECT type FROM rooms WHERE id = $1', [roomId]);
+        if (room?.type === 'direct') return;
+      }
+
       const unread = await db.all(`
         SELECT id FROM messages
         WHERE room_id = $1 AND sender_id != $2

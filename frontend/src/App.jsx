@@ -7,7 +7,7 @@ import ChatRoomPage from './pages/ChatRoomPage';
 import ChatPage from './pages/ChatPage';
 import SchedulePage from './pages/SchedulePage';
 import ScheduleAddPage from './pages/ScheduleAddPage';
-import NotificationPage from './pages/NotificationPage';
+import DMListPage from './pages/DMListPage';
 import AdminPage from './pages/AdminPage';
 import HomePage from './pages/HomePage';
 import { initPushNotifications } from './utils/pushManager';
@@ -38,7 +38,7 @@ export default function App() {
           <Route path="chat/:roomId" element={<ChatPage />} />
           <Route path="schedule" element={<SchedulePage />} />
           <Route path="schedule/add" element={<ScheduleAddPage />} />
-          <Route path="notifications" element={<NotificationPage />} />
+          <Route path="dm" element={<DMListPage />} />
           <Route path="admin" element={<AdminPage />} />
         </Route>
       </Routes>
