@@ -3,11 +3,12 @@ importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js
 importScripts('https://www.gstatic.com/firebasejs/10.12.2/firebase-messaging-compat.js');
 
 firebase.initializeApp({
-  apiKey: self.FIREBASE_API_KEY || '',
-  authDomain: self.FIREBASE_AUTH_DOMAIN || '',
-  projectId: self.FIREBASE_PROJECT_ID || '',
-  messagingSenderId: self.FIREBASE_MESSAGING_SENDER_ID || '',
-  appId: self.FIREBASE_APP_ID || ''
+  apiKey: "AIzaSyDvoaDQb1nqU0XIRBeLOW_RXVi7MdntQvs",
+  authDomain: "hongsunghun-campaign.firebaseapp.com",
+  projectId: "hongsunghun-campaign",
+  storageBucket: "hongsunghun-campaign.firebasestorage.app",
+  messagingSenderId: "695928517195",
+  appId: "1:695928517195:web:458dc9036dc5f5af1853ce"
 });
 
 const messaging = firebase.messaging();
