@@ -10,7 +10,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
 
     steps:
       - uses: actions/checkout@v4
@@ -28,45 +28,72 @@ jobs:
         run: |
           mkdir -p cap-build/www
           echo '<html><body></body></html>' > cap-build/www/index.html
-          echo '{"appId":"com.hongsunghun.campaign","appName":"홍캠프","webDir":"www","server":{"url":"https://hongsunghun-campaign.onrender.com","cleartext":false,"androidScheme":"https"}}' > cap-build/capacitor.config.json
+          cat > cap-build/capacitor.config.json << 'EOF'
+          {
+            "appId": "com.hongsunghun.campaign",
+            "appName": "홍캠프",
+            "webDir": "www",
+            "server": {
+              "url": "https://hongsunghun-campaign.onrender.com",
+              "cleartext": false,
+              "androidScheme": "https"
+            },
+            "plugins": {
+              "PushNotifications": {
+                "presentationOptions": ["badge", "sound", "alert"]
+              }
+            }
+          }
+          EOF
 
-      - name: Install Capacitor
+      - name: Install Capacitor + Push Notifications
         working-directory: cap-build
         run: |
           npm init -y
-          npm install @capacitor/core@5 @capacitor/android@5 @capacitor/cli@5
+          npm install @capacitor/core@5 @capacitor/android@5 @capacitor/cli@5 @capacitor/push-notifications@5
 
       - name: Add Android platform
         working-directory: cap-build
         run: npx cap add android
 
+      - name: Sync plugins
+        working-directory: cap-build
+        run: npx cap sync android
+
+      - name: Inject google-services.json (FCM)
+        run: |
+          if [ -n "${{ secrets.GOOGLE_SERVICES_JSON }}" ]; then
+            echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > cap-build/android/app/google-services.json
+            echo "✅ google-services.json 주입 완료"
+          else
+            echo "⚠️ GOOGLE_SERVICES_JSON secret 없음 — 더미로 빌드"
+            cat > cap-build/android/app/google-services.json << 'DUMMY'
+            {"project_info":{"project_id":"placeholder"},"client":[{"client_info":{"android_client_info":{"package_name":"com.hongsunghun.campaign"}},"api_key":[{"current_key":""}],"services":{"appinvite_service":{"other_platform_oauth_client":[]}}}],"configuration_version":"1"}
+            DUMMY
+          fi
+
       - name: Apply custom icon
         run: |
           MIPMAP=cap-build/android/app/src/main/res
-          RES=cap-build/android/app/src/main/res
-
-          # adaptive icon 제거 (Android 8+에서 XML 아이콘이 PNG보다 우선함)
           rm -rf $MIPMAP/mipmap-anydpi-v26
-
-          # 각 밀도별 PNG 아이콘 교체
-          for dir in mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi mipmap-mdpi; do
+          for dir in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
             mkdir -p $MIPMAP/$dir
           done
-          cp frontend/public/icons/icon-72.png  $MIPMAP/mipmap-hdpi/ic_launcher.png
-          cp frontend/public/icons/icon-72.png  $MIPMAP/mipmap-hdpi/ic_launcher_round.png
-          cp frontend/public/icons/icon-96.png  $MIPMAP/mipmap-xhdpi/ic_launcher.png
-          cp frontend/public/icons/icon-96.png  $MIPMAP/mipmap-xhdpi/ic_launcher_round.png
-          cp frontend/public/icons/icon-144.png $MIPMAP/mipmap-xxhdpi/ic_launcher.png
-          cp frontend/public/icons/icon-144.png $MIPMAP/mipmap-xxhdpi/ic_launcher_round.png
-          cp frontend/public/icons/icon-192.png $MIPMAP/mipmap-xxxhdpi/ic_launcher.png
-          cp frontend/public/icons/icon-192.png $MIPMAP/mipmap-xxxhdpi/ic_launcher_round.png
           cp frontend/public/icons/icon-72.png  $MIPMAP/mipmap-mdpi/ic_launcher.png
-          cp frontend/public/icons/icon-72.png  $MIPMAP/mipmap-mdpi/ic_launcher_round.png
-
-          # webp 형식 파일도 교체 (Capacitor 5가 webp를 생성하는 경우)
-          for dir in mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi mipmap-mdpi; do
+          cp frontend/public/icons/icon-72.png  $MIPMAP/mipmap-hdpi/ic_launcher.png
+          cp frontend/public/icons/icon-96.png  $MIPMAP/mipmap-xhdpi/ic_launcher.png
+          cp frontend/public/icons/icon-144.png $MIPMAP/mipmap-xxhdpi/ic_launcher.png
+          cp frontend/public/icons/icon-192.png $MIPMAP/mipmap-xxxhdpi/ic_launcher.png
+          for dir in mipmap-mdpi mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi; do
+            cp $MIPMAP/$dir/ic_launcher.png $MIPMAP/$dir/ic_launcher_round.png 2>/dev/null || true
             rm -f $MIPMAP/$dir/ic_launcher.webp $MIPMAP/$dir/ic_launcher_round.webp
           done
+
+      - name: Set Android target SDK 34
+        run: |
+          GRADLE=cap-build/android/app/build.gradle
+          sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 34/' $GRADLE
+          sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 34/' $GRADLE
 
       - name: Configure release signing
         run: |
@@ -82,7 +109,7 @@ jobs:
               }
           }
           android.buildTypes.release.signingConfig = android.signingConfigs.release
-          android.buildTypes.debug.signingConfig = android.signingConfigs.release
+          android.buildTypes.debug.signingConfig   = android.signingConfigs.release
           GRADLE
 
       - name: Accept Android SDK licenses
@@ -94,7 +121,7 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-v3
+          key: gradle-${{ runner.os }}-v4
           restore-keys: gradle-${{ runner.os }}-
 
       - name: Build APK
