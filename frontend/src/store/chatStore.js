@@ -1,10 +1,19 @@
 import { create } from 'zustand';
 
+const STORAGE_KEY = 'hc_unread_v1';
+
+function loadUnread() {
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {}; }
+}
+function saveUnread(counts) {
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(counts)); } catch {}
+}
+
 export const useChatStore = create((set, get) => ({
   rooms: [],
   messages: {},
-  unreadCounts: {},
-  roomTypes: {}, // { roomId: 'group' | 'direct' | 'announce' }
+  unreadCounts: loadUnread(), // 페이지 리로드/WebView 재시작 시에도 복원
+  roomTypes: {},
 
   // setRooms: rooms/roomTypes만 갱신, unreadCounts는 절대 건드리지 않음
   setRooms: (rooms) => {
@@ -21,6 +30,7 @@ export const useChatStore = create((set, get) => ({
         counts[r.id] = parseInt(r.unread_count) || 0;
       }
     });
+    saveUnread(counts);
     set({ unreadCounts: counts });
   },
 
@@ -31,21 +41,28 @@ export const useChatStore = create((set, get) => ({
     messages: { ...s.messages, [roomId]: msgs }
   })),
 
-  setUnread: (roomId, count) => set(s => ({
-    unreadCounts: { ...s.unreadCounts, [roomId]: count }
-  })),
-  incrementUnread: (roomId, roomType) => set(s => ({
-    unreadCounts: { ...s.unreadCounts, [roomId]: (s.unreadCounts[roomId] || 0) + 1 },
-    roomTypes: roomType ? { ...s.roomTypes, [roomId]: roomType } : s.roomTypes,
-  })),
-  clearUnread: (roomId) => set(s => ({
-    unreadCounts: { ...s.unreadCounts, [roomId]: 0 }
-  })),
+  setUnread: (roomId, count) => {
+    const counts = { ...get().unreadCounts, [roomId]: count };
+    saveUnread(counts);
+    set({ unreadCounts: counts });
+  },
+  incrementUnread: (roomId, roomType) => {
+    const s = get();
+    const counts = { ...s.unreadCounts, [roomId]: (s.unreadCounts[roomId] || 0) + 1 };
+    saveUnread(counts);
+    set({
+      unreadCounts: counts,
+      roomTypes: roomType ? { ...s.roomTypes, [roomId]: roomType } : s.roomTypes,
+    });
+  },
+  clearUnread: (roomId) => {
+    const counts = { ...get().unreadCounts, [roomId]: 0 };
+    saveUnread(counts);
+    set({ unreadCounts: counts });
+  },
 
   totalUnread: () => Object.values(get().unreadCounts).reduce((a, b) => a + b, 0),
 
-  // 그룹/공지 채팅 미읽음 합계 (채팅 탭 배지용)
-  // roomTypes에 등록된 것만 카운트 (undefined는 제외해서 DM이 채팅 탭에 섞이지 않도록)
   groupUnread: () => {
     const { unreadCounts, roomTypes } = get();
     return Object.entries(unreadCounts)
@@ -53,7 +70,6 @@ export const useChatStore = create((set, get) => ({
       .reduce((sum, [, c]) => sum + c, 0);
   },
 
-  // 1:1 DM 미읽음 합계 (DM 탭 배지용)
   dmUnread: () => {
     const { unreadCounts, roomTypes } = get();
     return Object.entries(unreadCounts)
