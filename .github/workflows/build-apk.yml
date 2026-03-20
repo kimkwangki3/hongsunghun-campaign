@@ -62,15 +62,8 @@ jobs:
 
       - name: Inject google-services.json (FCM)
         run: |
-          if [ -n "${{ secrets.GOOGLE_SERVICES_JSON }}" ]; then
-            echo '${{ secrets.GOOGLE_SERVICES_JSON }}' > cap-build/android/app/google-services.json
-            echo "✅ google-services.json 주입 완료"
-          else
-            echo "⚠️ GOOGLE_SERVICES_JSON secret 없음 — 더미로 빌드"
-            cat > cap-build/android/app/google-services.json << 'DUMMY'
-            {"project_info":{"project_id":"placeholder"},"client":[{"client_info":{"android_client_info":{"package_name":"com.hongsunghun.campaign"}},"api_key":[{"current_key":""}],"services":{"appinvite_service":{"other_platform_oauth_client":[]}}}],"configuration_version":"1"}
-            DUMMY
-          fi
+          cp android-config/google-services.json cap-build/android/app/google-services.json
+          echo "✅ google-services.json 복사 완료"
 
       - name: Apply custom icon
         run: |
@@ -89,11 +82,27 @@ jobs:
             rm -f $MIPMAP/$dir/ic_launcher.webp $MIPMAP/$dir/ic_launcher_round.webp
           done
 
-      - name: Set Android target SDK 34
+      - name: Set Android target SDK 34 + Add Firebase deps
         run: |
           GRADLE=cap-build/android/app/build.gradle
           sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 34/' $GRADLE
           sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 34/' $GRADLE
+
+          # google-services plugin 적용 (맨 위에 추가)
+          sed -i '1s/^/apply plugin: "com.google.gms.google-services"\n/' $GRADLE
+
+          # Firebase BOM + FCM 의존성 추가
+          cat >> $GRADLE << 'DEPS'
+
+          dependencies {
+              implementation platform('com.google.firebase:firebase-bom:32.7.0')
+              implementation 'com.google.firebase:firebase-messaging'
+          }
+          DEPS
+
+          # 프로젝트 build.gradle에 google-services classpath 추가
+          PROJ=cap-build/android/build.gradle
+          sed -i "/classpath 'com.android.tools.build:gradle/a\\        classpath 'com.google.gms:google-services:4.4.1'" $PROJ
 
       - name: Configure release signing
         run: |

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "695928517195",
+    "project_id": "hongsunghun-campaign",
+    "storage_bucket": "hongsunghun-campaign.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:695928517195:android:933ec4df53b4a0131853ce",
+        "android_client_info": {
+          "package_name": "com.hongsunghun.campaign"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAKyE1Xcmecp3Qx6fm3vEaOf2tmXoBiVpM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
