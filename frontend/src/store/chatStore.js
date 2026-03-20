@@ -6,22 +6,22 @@ export const useChatStore = create((set, get) => ({
   unreadCounts: {},
   roomTypes: {}, // { roomId: 'group' | 'direct' | 'announce' }
 
+  // setRooms: rooms/roomTypes만 갱신, unreadCounts는 절대 건드리지 않음
   setRooms: (rooms) => {
     const types = { ...get().roomTypes };
+    rooms.forEach(r => { types[r.id] = r.type; });
+    set({ rooms, roomTypes: types });
+  },
+
+  // 로그인 직후 한 번만 호출 — 서버 미읽음 수로 초기화 (이미 세팅된 건 보존)
+  initUnread: (rooms) => {
     const counts = { ...get().unreadCounts };
     rooms.forEach(r => {
-      types[r.id] = r.type;
-      const serverCount = parseInt(r.unread_count) || 0;
       if (counts[r.id] === undefined) {
-        // 처음 로드: 서버 값으로 초기화
-        counts[r.id] = serverCount;
-      } else if (counts[r.id] === 0 && serverCount > 0) {
-        // 로컬이 0이지만 서버가 더 높으면 서버 값 사용 (오프라인 중 수신된 메시지)
-        counts[r.id] = serverCount;
+        counts[r.id] = parseInt(r.unread_count) || 0;
       }
-      // 로컬 값 > 0인 경우: 소켓으로 실시간 추적 중이므로 서버값으로 덮어쓰지 않음
     });
-    set({ rooms, roomTypes: types, unreadCounts: counts });
+    set({ unreadCounts: counts });
   },
 
   addMessage: (roomId, msg) => set(s => ({

@@ -55,18 +55,22 @@ export default function Layout() {
   const logout = useAuthStore(s => s.logout);
   const groupUnread = useChatStore(s => s.groupUnread());
   const dmUnread = useChatStore(s => s.dmUnread());
-  const { setRooms, incrementUnread } = useChatStore();
+  const { setRooms, initUnread, incrementUnread } = useChatStore();
   const [toast, setToast] = useState(null);
 
   const isChatRoom = /^\/chat\/.+/.test(location.pathname);
   const currentRoomId = location.pathname.match(/^\/chat\/(.+)/)?.[1] ?? null;
 
-  // 로그인 시 알림 권한 요청 + 방 목록 로드 (미읽음 카운트 초기화)
+  // 로그인 시 알림 권한 요청 + 방 목록 로드 (미읽음 카운트 초기화 1회)
   useEffect(() => {
     if (!user) return;
     requestNotificationPermission();
     api.get('/chat/rooms')
-      .then(r => setRooms(r.data.data || []))
+      .then(r => {
+        const rooms = r.data.data || [];
+        setRooms(rooms);
+        initUnread(rooms); // 서버 미읽음 초기값 세팅 (이후 setRooms는 건드리지 않음)
+      })
       .catch(() => {});
   }, [user?.id]);
 
