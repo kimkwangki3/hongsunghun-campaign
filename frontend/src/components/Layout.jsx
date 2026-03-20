@@ -65,7 +65,7 @@ export default function Layout() {
 
   function showToast(text) {
     setToast(text);
-    setTimeout(() => setToast(null), 4000);
+    setTimeout(() => setToast(null), 6000);
   }
 
   const { connected } = useSocket({
@@ -187,14 +187,14 @@ export default function Layout() {
       {/* 토스트 — overflow:hidden 밖으로 portal 렌더링 */}
       {toast && ReactDOM.createPortal(
         <div style={{
-          position:'fixed', top:20, left:'50%', transform:'translateX(-50%)',
-          background:'#1e1e3f', border:'1px solid rgba(129,140,248,0.4)',
-          borderRadius:12, padding:'12px 20px', zIndex:99999,
-          fontSize:13, color:'#e0e0ff',
-          boxShadow:'0 4px 32px rgba(0,0,0,0.6)',
+          position:'fixed', top:64, left:'50%', transform:'translateX(-50%)',
+          background:'#2a2a5a', border:'2px solid rgba(129,140,248,0.7)',
+          borderRadius:16, padding:'16px 24px', zIndex:99999,
+          fontSize:15, fontWeight:600, color:'#fff',
+          boxShadow:'0 8px 40px rgba(0,0,0,0.8)',
           animation:'toastIn 0.25s ease',
-          maxWidth:'90vw', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-          pointerEvents:'none'
+          maxWidth:'88vw', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
+          pointerEvents:'none', letterSpacing:'0.01em'
         }}>
           {toast}
         </div>,
