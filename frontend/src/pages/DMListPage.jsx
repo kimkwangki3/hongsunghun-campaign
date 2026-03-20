@@ -11,6 +11,7 @@ export default function DMListPage() {
   const [members, setMembers] = useState([]);
   const [dmRooms, setDmRooms] = useState({}); // { userId: { roomId, unread, lastMessage } }
   const [allDmRooms, setAllDmRooms] = useState([]); // admin 전용: 전체 DM방 목록
+  const [adminDmError, setAdminDmError] = useState('');
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(null);
 
@@ -51,7 +52,10 @@ export default function DMListPage() {
     if (isAdmin) {
       api.get('/chat/admin/dms')
         .then(r => setAllDmRooms(r.data.data || []))
-        .catch(() => {});
+        .catch(err => {
+          const msg = err.response?.data?.message || err.message || '알 수 없는 오류';
+          setAdminDmError(`API 오류: ${msg} (${err.response?.status || '네트워크 오류'})`);
+        });
     }
   }, [user?.id, user?.name, isAdmin]);
 
@@ -175,7 +179,9 @@ export default function DMListPage() {
               🔒 관리자 — 전체 1:1 대화 열람
             </div>
             <div style={{ padding: '0 0 24px' }}>
-              {allDmRooms.length === 0
+              {adminDmError
+                ? <div style={{ padding: '16px 20px', color: '#ef4444', fontSize: 13, background: 'rgba(239,68,68,0.08)', margin: '8px 16px', borderRadius: 8 }}>{adminDmError}</div>
+                : allDmRooms.length === 0
                 ? <div style={{ padding: '20px', textAlign: 'center', color: '#404060', fontSize: 14 }}>진행 중인 1:1 대화 없음</div>
                 : allDmRooms.map(room => (
                   <button
