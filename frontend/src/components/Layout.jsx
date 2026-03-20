@@ -16,11 +16,34 @@ function requestNotificationPermission() {
 function sendBrowserNotification(title, body, url = '/') {
   if ('Notification' in window && Notification.permission === 'granted') {
     const n = new Notification(title, { body, icon: '/icons/icon-192.png' });
-    n.onclick = () => {
-      window.focus();
-      window.location.href = url;
-    };
+    n.onclick = () => { window.focus(); window.location.href = url; };
   }
+}
+
+// 알림 소리 (Web Audio API — 파일 없이 비프음)
+function playNotificationSound() {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.frequency.value = 880;
+    gain.gain.setValueAtTime(0.25, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.35);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.35);
+  } catch (_) {}
+}
+
+// 메시지 미리보기 텍스트 (이미지/파일은 사람이 읽을 수 있는 텍스트로)
+function getPreview(content) {
+  try {
+    const p = JSON.parse(content);
+    if (p.base64 || (p.type === 'image')) return '📷 사진을 보냈습니다';
+    if (p.url && p.name) return `📎 ${p.name}`;
+  } catch (_) {}
+  return content.substring(0, 50);
 }
 
 export default function Layout() {
@@ -47,15 +70,12 @@ export default function Layout() {
 
   const { connected } = useSocket({
     onNewMessage: (msg) => {
-      // 내가 보낸 메시지가 아니면 어디서든 알림
       if (msg.senderId !== user?.id) {
-        const text = `💬 ${msg.senderName}: ${msg.content.substring(0, 40)}`;
+        const preview = getPreview(msg.content);
+        const text = `💬 ${msg.senderName}: ${preview}`;
+        playNotificationSound();
         showToast(text);
-        sendBrowserNotification(
-          '💬 홍캠프 새 메시지',
-          `${msg.senderName}: ${msg.content.substring(0, 60)}`,
-          `/chat/${msg.roomId}`
-        );
+        sendBrowserNotification('💬 홍캠프 새 메시지', `${msg.senderName}: ${preview}`, `/chat/${msg.roomId}`);
       }
     },
     onToast: (text, url) => {
