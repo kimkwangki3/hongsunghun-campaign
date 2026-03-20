@@ -46,16 +46,33 @@ jobs:
           for dir in mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi mipmap-mdpi; do
             mkdir -p $MIPMAP/$dir
           done
-          cp frontend/public/icons/icon-72.png $MIPMAP/mipmap-hdpi/ic_launcher.png
-          cp frontend/public/icons/icon-72.png $MIPMAP/mipmap-hdpi/ic_launcher_round.png
-          cp frontend/public/icons/icon-96.png $MIPMAP/mipmap-xhdpi/ic_launcher.png
-          cp frontend/public/icons/icon-96.png $MIPMAP/mipmap-xhdpi/ic_launcher_round.png
+          cp frontend/public/icons/icon-72.png  $MIPMAP/mipmap-hdpi/ic_launcher.png
+          cp frontend/public/icons/icon-72.png  $MIPMAP/mipmap-hdpi/ic_launcher_round.png
+          cp frontend/public/icons/icon-96.png  $MIPMAP/mipmap-xhdpi/ic_launcher.png
+          cp frontend/public/icons/icon-96.png  $MIPMAP/mipmap-xhdpi/ic_launcher_round.png
           cp frontend/public/icons/icon-144.png $MIPMAP/mipmap-xxhdpi/ic_launcher.png
           cp frontend/public/icons/icon-144.png $MIPMAP/mipmap-xxhdpi/ic_launcher_round.png
           cp frontend/public/icons/icon-192.png $MIPMAP/mipmap-xxxhdpi/ic_launcher.png
           cp frontend/public/icons/icon-192.png $MIPMAP/mipmap-xxxhdpi/ic_launcher_round.png
-          cp frontend/public/icons/icon-72.png $MIPMAP/mipmap-mdpi/ic_launcher.png
-          cp frontend/public/icons/icon-72.png $MIPMAP/mipmap-mdpi/ic_launcher_round.png
+          cp frontend/public/icons/icon-72.png  $MIPMAP/mipmap-mdpi/ic_launcher.png
+          cp frontend/public/icons/icon-72.png  $MIPMAP/mipmap-mdpi/ic_launcher_round.png
+
+      - name: Configure release signing
+        run: |
+          cp android-config/hongcamp-release.keystore cap-build/android/app/hongcamp-release.keystore
+          cat >> cap-build/android/app/build.gradle << 'GRADLE'
+
+          android.signingConfigs {
+              release {
+                  storeFile file("hongcamp-release.keystore")
+                  storePassword "hongcamp2026"
+                  keyAlias "hongcamp"
+                  keyPassword "hongcamp2026"
+              }
+          }
+          android.buildTypes.release.signingConfig = android.signingConfigs.release
+          android.buildTypes.debug.signingConfig = android.signingConfigs.release
+          GRADLE
 
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
@@ -66,7 +83,7 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-v2
+          key: gradle-${{ runner.os }}-v3
           restore-keys: gradle-${{ runner.os }}-
 
       - name: Build APK
