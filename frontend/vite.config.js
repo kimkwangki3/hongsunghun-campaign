@@ -32,6 +32,7 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,ico,png,svg,woff2}'],
+        importScripts: ['/fcm-sw.js'],
         runtimeCaching: [
           {
             urlPattern: /^https:\/\/.*\/api\/v1\//,

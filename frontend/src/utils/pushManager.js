@@ -70,7 +70,8 @@ async function initWebPush() {
     const permission = await Notification.requestPermission();
     if (permission !== 'granted') return;
 
-    const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+    // VitePWA가 이미 등록한 SW 사용 (SW 중복 충돌 방지)
+    const swReg = await navigator.serviceWorker.ready;
     const token = await getToken(messaging, {
       vapidKey: VAPID_KEY,
       serviceWorkerRegistration: swReg
