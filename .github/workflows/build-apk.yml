@@ -43,6 +43,12 @@ jobs:
       - name: Apply custom icon
         run: |
           MIPMAP=cap-build/android/app/src/main/res
+          RES=cap-build/android/app/src/main/res
+
+          # adaptive icon 제거 (Android 8+에서 XML 아이콘이 PNG보다 우선함)
+          rm -rf $MIPMAP/mipmap-anydpi-v26
+
+          # 각 밀도별 PNG 아이콘 교체
           for dir in mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi mipmap-mdpi; do
             mkdir -p $MIPMAP/$dir
           done
@@ -56,6 +62,11 @@ jobs:
           cp frontend/public/icons/icon-192.png $MIPMAP/mipmap-xxxhdpi/ic_launcher_round.png
           cp frontend/public/icons/icon-72.png  $MIPMAP/mipmap-mdpi/ic_launcher.png
           cp frontend/public/icons/icon-72.png  $MIPMAP/mipmap-mdpi/ic_launcher_round.png
+
+          # webp 형식 파일도 교체 (Capacitor 5가 webp를 생성하는 경우)
+          for dir in mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi mipmap-mdpi; do
+            rm -f $MIPMAP/$dir/ic_launcher.webp $MIPMAP/$dir/ic_launcher_round.webp
+          done
 
       - name: Configure release signing
         run: |
