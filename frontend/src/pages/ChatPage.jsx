@@ -210,7 +210,8 @@ export default function ChatPage() {
         flexShrink: 0
       }}>
         <button onClick={() => {
-          if (roomInfo?.type === 'direct') navigate('/dm');
+          if (readOnly) navigate(-1);
+          else if (roomInfo?.type === 'direct') navigate('/dm');
           else navigate('/');
         }} style={{
           background: 'none', border: 'none', cursor: 'pointer',
