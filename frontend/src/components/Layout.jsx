@@ -21,7 +21,7 @@ function sendBrowserNotification(title, body, url = '/') {
   }
 }
 
-// 알림 소리 (Web Audio API — 파일 없이 비프음)
+// 알림 소리 + 진동 (안드로이드 WebView 지원)
 function playNotificationSound() {
   try {
     const ctx = new (window.AudioContext || window.webkitAudioContext)();
@@ -35,6 +35,7 @@ function playNotificationSound() {
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.35);
   } catch (_) {}
+  try { navigator.vibrate?.([100, 50, 100]); } catch (_) {}
 }
 
 // 메시지 미리보기 텍스트 (이미지/파일은 사람이 읽을 수 있는 텍스트로)
@@ -196,23 +197,27 @@ export default function Layout() {
       {/* 토스트 — overflow:hidden 밖으로 portal 렌더링 */}
       {toast && ReactDOM.createPortal(
         <div style={{
-          position:'fixed', top:64, left:'50%', transform:'translateX(-50%)',
-          background:'#2a2a5a', border:'2px solid rgba(129,140,248,0.7)',
-          borderRadius:16, padding:'16px 24px', zIndex:99999,
+          position:'fixed',
+          bottom:'calc(72px + env(safe-area-inset-bottom))',
+          left:'50%', transform:'translateX(-50%)',
+          background:'#1a1a4a', border:'2px solid rgba(129,140,248,0.8)',
+          borderRadius:16, padding:'14px 22px', zIndex:99999,
           fontSize:15, fontWeight:600, color:'#fff',
-          boxShadow:'0 8px 40px rgba(0,0,0,0.8)',
+          boxShadow:'0 -4px 40px rgba(0,0,0,0.7)',
           animation:'toastIn 0.25s ease',
           maxWidth:'88vw', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap',
-          pointerEvents:'none', letterSpacing:'0.01em'
+          pointerEvents:'none', letterSpacing:'0.01em',
+          display:'flex', alignItems:'center', gap:8
         }}>
-          {toast}
+          <span style={{ fontSize:18 }}>💬</span>
+          <span>{toast}</span>
         </div>,
         document.body
       )}
 
       <style>{`
         @keyframes toastIn {
-          from { opacity:0; transform:translateX(-50%) translateY(-12px); }
+          from { opacity:0; transform:translateX(-50%) translateY(20px); }
           to   { opacity:1; transform:translateX(-50%) translateY(0); }
         }
       `}</style>
