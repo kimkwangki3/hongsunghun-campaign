@@ -50,17 +50,15 @@ async function initCapacitorPush() {
 /* ── 웹 브라우저 Firebase Web SDK FCM 등록 ── */
 async function initWebPush() {
   const firebaseConfig = {
-    apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
-    authDomain:        import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
-    projectId:         import.meta.env.VITE_FIREBASE_PROJECT_ID,
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
-    appId:             import.meta.env.VITE_FIREBASE_APP_ID,
+    apiKey:            "AIzaSyDvoaDQb1nqU0XIRBeLOW_RXVi7MdntQvs",
+    authDomain:        "hongsunghun-campaign.firebaseapp.com",
+    projectId:         "hongsunghun-campaign",
+    storageBucket:     "hongsunghun-campaign.firebasestorage.app",
+    messagingSenderId: "695928517195",
+    appId:             "1:695928517195:web:458dc9036dc5f5af1853ce",
   };
 
-  if (!firebaseConfig.apiKey) {
-    console.warn('Firebase 설정 없음 — 웹 푸시 비활성화');
-    return;
-  }
+  const VAPID_KEY = "BNAplOVSA2PwRJp-n3Xy-ZCCmzLFlN9Kg76yp0A-or2hDM21D5UZO8qwvnhCNTwlKOBmGfdwozKCAMHXlb22HWo";
 
   try {
     const { initializeApp, getApps } = await import('firebase/app');
@@ -74,7 +72,7 @@ async function initWebPush() {
 
     const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
     const token = await getToken(messaging, {
-      vapidKey: import.meta.env.VITE_VAPID_KEY,
+      vapidKey: VAPID_KEY,
       serviceWorkerRegistration: swReg
     });
 
