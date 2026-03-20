@@ -34,7 +34,7 @@ jobs:
         working-directory: cap-build
         run: |
           npm init -y
-          npm install @capacitor/core@6 @capacitor/android@6 @capacitor/cli@6
+          npm install @capacitor/core@5 @capacitor/android@5 @capacitor/cli@5
 
       - name: Add Android platform
         working-directory: cap-build
