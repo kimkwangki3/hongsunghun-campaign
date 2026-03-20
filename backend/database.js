@@ -111,6 +111,15 @@ async function initDB() {
   // cleared_at 컬럼 마이그레이션 (없으면 추가)
   await db.run(`ALTER TABLE rooms ADD COLUMN IF NOT EXISTS cleared_at INTEGER DEFAULT 0`);
 
+  // 성능 인덱스 (없으면 생성)
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_room_members_user ON room_members(user_id)`);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_room_members_room ON room_members(room_id)`);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_messages_room_time ON messages(room_id, created_at DESC)`);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id)`);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_message_reads_user ON message_reads(user_id)`);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_message_reads_msg ON message_reads(message_id)`);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_device_tokens_user ON device_tokens(user_id)`);
+
   // 선거 핵심 일정 + 기본 채팅방 항상 보장 (ON CONFLICT DO NOTHING으로 중복 안전)
   await seedElectionSchedules();
 

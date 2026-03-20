@@ -1,17 +1,22 @@
-import { useEffect } from 'react';
+import { useEffect, lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
-import ChatPage from './pages/ChatPage';
-import ChatRoomPage from './pages/ChatRoomPage';
-import SchedulePage from './pages/SchedulePage';
-import ScheduleAddPage from './pages/ScheduleAddPage';
-import DMListPage from './pages/DMListPage';
-import AdminPage from './pages/AdminPage';
-import MembersAdminPage from './pages/MembersAdminPage';
-import HomePage from './pages/HomePage';
 import { initPushNotifications } from './utils/pushManager';
+
+const HomePage        = lazy(() => import('./pages/HomePage'));
+const ChatPage        = lazy(() => import('./pages/ChatPage'));
+const ChatRoomPage    = lazy(() => import('./pages/ChatRoomPage'));
+const SchedulePage    = lazy(() => import('./pages/SchedulePage'));
+const ScheduleAddPage = lazy(() => import('./pages/ScheduleAddPage'));
+const DMListPage      = lazy(() => import('./pages/DMListPage'));
+const AdminPage       = lazy(() => import('./pages/AdminPage'));
+const MembersAdminPage = lazy(() => import('./pages/MembersAdminPage'));
+
+function PageLoader() {
+  return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#818cf8' }}>로딩 중...</div>;
+}
 
 function isTokenValid(token) {
   if (!token) return false;
@@ -59,14 +64,14 @@ export default function App() {
             <Layout />
           </ProtectedRoute>
         }>
-          <Route index element={<HomePage />} />
-          <Route path="chat" element={<ChatRoomPage />} />
-          <Route path="chat/:roomId" element={<ChatPage />} />
-          <Route path="schedule" element={<SchedulePage />} />
-          <Route path="schedule/add" element={<ScheduleAddPage />} />
-          <Route path="dm" element={<DMListPage />} />
-          <Route path="admin" element={<AdminPage />} />
-          <Route path="admin/members" element={<MembersAdminPage />} />
+          <Route index element={<Suspense fallback={<PageLoader />}><HomePage /></Suspense>} />
+          <Route path="chat" element={<Suspense fallback={<PageLoader />}><ChatRoomPage /></Suspense>} />
+          <Route path="chat/:roomId" element={<Suspense fallback={<PageLoader />}><ChatPage /></Suspense>} />
+          <Route path="schedule" element={<Suspense fallback={<PageLoader />}><SchedulePage /></Suspense>} />
+          <Route path="schedule/add" element={<Suspense fallback={<PageLoader />}><ScheduleAddPage /></Suspense>} />
+          <Route path="dm" element={<Suspense fallback={<PageLoader />}><DMListPage /></Suspense>} />
+          <Route path="admin" element={<Suspense fallback={<PageLoader />}><AdminPage /></Suspense>} />
+          <Route path="admin/members" element={<Suspense fallback={<PageLoader />}><MembersAdminPage /></Suspense>} />
         </Route>
       </Routes>
     </BrowserRouter>

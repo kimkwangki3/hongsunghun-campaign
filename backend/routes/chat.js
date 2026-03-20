@@ -34,18 +34,48 @@ const upload = multer({
 router.get('/rooms', async (req, res) => {
   try {
     const rooms = await db.all(`
+      WITH last_msgs AS (
+        SELECT DISTINCT ON (room_id)
+          room_id, content AS last_msg_enc, created_at AS last_msg_at
+        FROM messages
+        ORDER BY room_id, created_at DESC
+      ),
+      msg_counts AS (
+        SELECT room_id, COUNT(*) AS msg_count
+        FROM messages WHERE is_deleted = 0
+        GROUP BY room_id
+      ),
+      unread AS (
+        SELECT m.room_id, COUNT(*) AS unread_count
+        FROM messages m
+        WHERE m.sender_id != $1
+          AND NOT EXISTS (
+            SELECT 1 FROM message_reads mr
+            WHERE mr.message_id = m.id AND mr.user_id = $2
+          )
+        GROUP BY m.room_id
+      ),
+      member_counts AS (
+        SELECT rm2.room_id, COUNT(*) AS member_count
+        FROM room_members rm2
+        JOIN users u2 ON rm2.user_id = u2.id
+        WHERE u2.role != 'admin'
+        GROUP BY rm2.room_id
+      )
       SELECT r.*,
-        (SELECT COUNT(*) FROM messages m WHERE m.room_id = r.id AND m.is_deleted = 0) as msg_count,
-        (SELECT m.content FROM messages m WHERE m.room_id = r.id ORDER BY m.created_at DESC LIMIT 1) as last_msg_enc,
-        (SELECT m.created_at FROM messages m WHERE m.room_id = r.id ORDER BY m.created_at DESC LIMIT 1) as last_msg_at,
-        (SELECT COUNT(*) FROM messages m2
-         WHERE m2.room_id = r.id AND m2.sender_id != $1
-         AND m2.id NOT IN (SELECT message_id FROM message_reads WHERE user_id = $2)) as unread_count,
-        (SELECT COUNT(*) FROM room_members rm2 JOIN users u2 ON rm2.user_id = u2.id WHERE rm2.room_id = r.id AND u2.role != 'admin') as member_count
+        COALESCE(mc.msg_count, 0) AS msg_count,
+        lm.last_msg_enc,
+        lm.last_msg_at,
+        COALESCE(u.unread_count, 0) AS unread_count,
+        COALESCE(mbc.member_count, 0) AS member_count
       FROM rooms r
       JOIN room_members rm ON rm.room_id = r.id
+      LEFT JOIN last_msgs lm ON lm.room_id = r.id
+      LEFT JOIN msg_counts mc ON mc.room_id = r.id
+      LEFT JOIN unread u ON u.room_id = r.id
+      LEFT JOIN member_counts mbc ON mbc.room_id = r.id
       WHERE rm.user_id = $3
-      ORDER BY COALESCE(last_msg_at, r.created_at) DESC
+      ORDER BY COALESCE(lm.last_msg_at, r.created_at) DESC
     `, [req.user.id, req.user.id, req.user.id]);
 
     const result = rooms.map(r => ({
