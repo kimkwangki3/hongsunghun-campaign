@@ -34,7 +34,7 @@ jobs:
         working-directory: cap-build
         run: |
           npm init -y
-          npm install @capacitor/core@5 @capacitor/android@5 @capacitor/cli@5
+          npm install @capacitor/core@6 @capacitor/android@6 @capacitor/cli@6
 
       - name: Add Android platform
         working-directory: cap-build
@@ -56,9 +56,10 @@ jobs:
         working-directory: cap-build/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon
+          ./gradlew assembleDebug --no-daemon --warning-mode=none
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2 -Xmx2g
+          JAVA_TOOL_OPTIONS: -Xmx2g
 
       - uses: actions/upload-artifact@v4
         with:
