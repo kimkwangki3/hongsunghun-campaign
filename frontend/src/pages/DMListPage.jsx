@@ -1,9 +1,10 @@
 // src/pages/DMListPage.jsx
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
+import { useSocket } from '../hooks/useSocket';
 
 export default function DMListPage() {
   const navigate = useNavigate();
@@ -13,29 +14,18 @@ export default function DMListPage() {
   const unreadCounts = useChatStore(s => s.unreadCounts);
   const [members, setMembers] = useState([]);
   const [dmRooms, setDmRooms] = useState({}); // { memberName: { roomId, lastMessage } }
-  const [allDmRooms, setAllDmRooms] = useState([]); // admin 전용: 전체 DM방 목록
+  const [allDmRooms, setAllDmRooms] = useState([]);
   const [adminDmError, setAdminDmError] = useState('');
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(null);
 
-  useEffect(() => {
-    const userId = user?.id;
+  const loadRooms = useCallback(() => {
     const userName = user?.name;
-    if (!userId) return;
-
-    // 멤버 목록: 본인·admin 제외
-    api.get('/chat/members')
-      .then(r => {
-        const all = r.data.data || [];
-        setMembers(all.filter(m => m.id !== userId && m.role !== 'admin'));
-      })
-      .catch(() => setMembers([]));
-
-    // 내 DM방 → chatStore에 등록 + 이름 기반 매핑
+    if (!userName) return;
     api.get('/chat/rooms')
       .then(r => {
         const allRooms = r.data.data || [];
-        setRooms(allRooms); // chatStore에 등록 (미읽음 카운트 포함)
+        setRooms(allRooms);
         const rooms = allRooms.filter(rm => rm.type === 'direct');
         const map = {};
         rooms.forEach(rm => {
@@ -50,8 +40,22 @@ export default function DMListPage() {
         });
         setDmRooms(map);
       })
-      .catch(() => {})
-      .finally(() => setLoading(false));
+      .catch(() => {});
+  }, [user?.name, setRooms]);
+
+  useEffect(() => {
+    const userId = user?.id;
+    if (!userId) return;
+
+    // 멤버 목록: 본인·admin 제외
+    api.get('/chat/members')
+      .then(r => {
+        const all = r.data.data || [];
+        setMembers(all.filter(m => m.id !== userId && m.role !== 'admin'));
+      })
+      .catch(() => setMembers([]));
+
+    loadRooms();
 
     if (isAdmin) {
       api.get('/chat/admin/dms')
@@ -61,7 +65,23 @@ export default function DMListPage() {
           setAdminDmError(`API 오류: ${msg} (${err.response?.status || '네트워크 오류'})`);
         });
     }
+
+    setLoading(false);
   }, [user?.id, user?.name, isAdmin]);
+
+  // 새 DM 메시지 수신 시 방 목록 새로고침 (새 DM방이 생겼을 수 있음)
+  useSocket({
+    onNewMessage: (msg) => {
+      if (msg.roomType === 'direct') {
+        loadRooms();
+        if (isAdmin) {
+          api.get('/chat/admin/dms')
+            .then(r => setAllDmRooms(r.data.data || []))
+            .catch(() => {});
+        }
+      }
+    }
+  });
 
   async function openDM(targetUserId) {
     setStarting(targetUserId);
@@ -143,21 +163,33 @@ export default function DMListPage() {
 
                 {/* 정보 */}
                 <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <span style={{ fontSize: 15, fontWeight: 600, color: '#e8e8f8' }}>{member.name}</span>
-                    <span style={{
-                      fontSize: 10, padding: '2px 6px', borderRadius: 6,
-                      background: member.role === 'admin' ? 'rgba(129,140,248,0.2)' : 'rgba(255,255,255,0.07)',
-                      color: member.role === 'admin' ? '#818cf8' : '#60608a',
-                      fontWeight: 600
-                    }}>
-                      {ROLE_LABEL[member.role] || member.role}
-                    </span>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                      <span style={{ fontSize: 15, fontWeight: unread > 0 ? 700 : 600, color: '#e8e8f8' }}>{member.name}</span>
+                      <span style={{
+                        fontSize: 10, padding: '2px 6px', borderRadius: 6,
+                        background: member.role === 'admin' ? 'rgba(129,140,248,0.2)' : 'rgba(255,255,255,0.07)',
+                        color: member.role === 'admin' ? '#818cf8' : '#60608a',
+                        fontWeight: 600
+                      }}>
+                        {ROLE_LABEL[member.role] || member.role}
+                      </span>
+                    </div>
+                    {unread > 0 && (
+                      <span style={{
+                        background: '#ef4444', color: '#fff',
+                        fontSize: 11, fontWeight: 700,
+                        minWidth: 20, height: 20, borderRadius: 10,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        padding: '0 4px', flexShrink: 0
+                      }}>{unread > 99 ? '99+' : unread}</span>
+                    )}
                   </div>
                   {dm?.lastMessage ? (
                     <div style={{
-                      fontSize: 12, color: '#6060a0', marginTop: 2,
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                      fontSize: 12, color: unread > 0 ? '#a0a0d8' : '#6060a0', marginTop: 2,
+                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                      fontWeight: unread > 0 ? 600 : 400
                     }}>
                       {dm.lastMessage}
                     </div>
