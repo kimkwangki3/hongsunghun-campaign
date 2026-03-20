@@ -278,12 +278,11 @@ router.get('/admin/dms', requireAdmin, async (req, res) => {
     const rooms = await db.all(`
       SELECT r.id, r.name, r.created_at,
         (SELECT m.content FROM messages m WHERE m.room_id = r.id ORDER BY m.created_at DESC LIMIT 1) as last_msg_enc,
-        (SELECT m.created_at FROM messages m WHERE m.room_id = r.id ORDER BY m.created_at DESC LIMIT 1) as last_msg_at,
         (SELECT COUNT(*) FROM messages m WHERE m.room_id = r.id) as msg_count,
         (SELECT STRING_AGG(u.name, ' · ' ORDER BY u.name) FROM room_members rm JOIN users u ON rm.user_id = u.id WHERE rm.room_id = r.id) as members
       FROM rooms r
       WHERE r.type = 'direct'
-      ORDER BY COALESCE(last_msg_at, r.created_at) DESC
+      ORDER BY (SELECT MAX(m.created_at) FROM messages m WHERE m.room_id = r.id) DESC NULLS LAST
     `);
 
     const result = rooms.map(r => ({
