@@ -19,7 +19,7 @@ export default function ChatRoomPage() {
       const all = r.data.data;
       setRooms(all);
       // 공지방 제외한 목록
-      const chatRooms = all.filter(r => r.type !== 'announce');
+      const chatRooms = all.filter(r => r.type === 'group');
       // 채팅방이 1개면 바로 입장
       if (chatRooms.length === 1) {
         navigate(`/chat/${chatRooms[0].id}`, { replace: true });
@@ -31,7 +31,7 @@ export default function ChatRoomPage() {
 
   if (loading) return <LoadingScreen />;
 
-  const chatRooms = rooms.filter(r => r.type !== 'announce');
+  const chatRooms = rooms.filter(r => r.type === 'group');
 
   return (
     <div style={{
