@@ -98,20 +98,11 @@ jobs:
           DEPS
           echo 'apply plugin: "com.google.gms.google-services"' >> $GRADLE
 
-          # 프로젝트 build.gradle에 google-services classpath 추가 (Python으로 안전하게)
-          python3 - << 'PYEOF'
-          import re
-          path = 'cap-build/android/build.gradle'
-          content = open(path).read()
-          # buildscript dependencies 블록 안에 classpath 추가
-          content = content.replace(
-              "classpath 'com.android.tools.build:gradle",
-              "classpath 'com.google.gms:google-services:4.4.1'\n        classpath 'com.android.tools.build:gradle",
-              1
-          )
-          open(path, 'w').write(content)
-          print('✅ google-services classpath 추가 완료')
-          PYEOF
+          # 프로젝트 build.gradle에 google-services classpath 추가 (awk 사용)
+          PROJ=cap-build/android/build.gradle
+          awk "/com.android.tools.build:gradle/{print \"        classpath 'com.google.gms:google-services:4.4.1'\"} {print}" \
+            $PROJ > /tmp/proj_build.gradle && mv /tmp/proj_build.gradle $PROJ
+          echo "✅ google-services classpath 추가 완료"
 
       - name: Configure release signing
         run: |
