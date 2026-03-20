@@ -50,7 +50,12 @@ export default function App() {
         if (u) setAuth(token, { id: u.id, name: u.name, role: u.role });
       }).catch(() => {});
     });
-    initPushNotifications();
+    // iOS PWA는 사용자 제스처 없이 Notification.requestPermission() 불가 → Layout.jsx에서 처리
+    const isIOSPWA = /iphone|ipad|ipod/i.test(navigator.userAgent) &&
+      window.matchMedia('(display-mode: standalone)').matches;
+    if (!isIOSPWA) {
+      initPushNotifications();
+    }
   }, [token]);
 
   return (

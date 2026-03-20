@@ -65,13 +65,16 @@ export default function Layout() {
   // 알림 허용 배너: iOS PWA는 버튼 클릭 필요, 그 외는 자동 요청
   useEffect(() => {
     if (!user || !('Notification' in window)) return;
-    if (Notification.permission === 'granted') return;
     if (Notification.permission === 'denied') return;
-    // iOS PWA 감지: standalone 모드 + iOS
     const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
     if (isIOS && isStandalone) {
-      setShowNotiPrompt(true); // 버튼 배너 표시
+      if (Notification.permission === 'granted') {
+        // 이미 허용됨 — 토큰 재등록 (앱 재시작마다 최신 토큰 유지)
+        import('../utils/pushManager').then(({ initPushNotifications }) => initPushNotifications());
+      } else {
+        setShowNotiPrompt(true); // 버튼 배너 표시
+      }
     } else {
       requestNotificationPermission(); // 그 외는 자동 요청
     }
