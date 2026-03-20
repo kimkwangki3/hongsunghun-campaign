@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 
 const STORAGE_KEY = 'hc_unread_v1';
+const DM_MAP_KEY  = 'hc_dmmap_v1';
 
 function loadUnread() {
   try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}'); } catch { return {}; }
@@ -8,18 +9,33 @@ function loadUnread() {
 function saveUnread(counts) {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(counts)); } catch {}
 }
+function loadDmMap() {
+  try { return JSON.parse(localStorage.getItem(DM_MAP_KEY) || '{}'); } catch { return {}; }
+}
+function saveDmMap(map) {
+  try { localStorage.setItem(DM_MAP_KEY, JSON.stringify(map)); } catch {}
+}
 
 export const useChatStore = create((set, get) => ({
   rooms: [],
   messages: {},
-  unreadCounts: loadUnread(), // 페이지 리로드/WebView 재시작 시에도 복원
+  unreadCounts: loadUnread(),
   roomTypes: {},
+  // memberName → roomId 매핑 (localStorage 저장으로 재시작 후에도 복원)
+  dmPeerMap: loadDmMap(),
 
   // setRooms: rooms/roomTypes만 갱신, unreadCounts는 절대 건드리지 않음
   setRooms: (rooms) => {
     const types = { ...get().roomTypes };
     rooms.forEach(r => { types[r.id] = r.type; });
     set({ rooms, roomTypes: types });
+  },
+
+  // DM 메시지 수신 시 memberName → roomId 즉시 저장 (API 없이 배지 표시 가능)
+  setDmPeer: (memberName, roomId) => {
+    const map = { ...get().dmPeerMap, [memberName]: roomId };
+    saveDmMap(map);
+    set({ dmPeerMap: map });
   },
 
   // 로그인 직후 한 번만 호출 — 서버 미읽음 수로 초기화 (이미 세팅된 건 보존)

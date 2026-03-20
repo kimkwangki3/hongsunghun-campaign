@@ -12,6 +12,7 @@ export default function DMListPage() {
   const isAdmin = user?.role === 'admin';
   const { setRooms, clearUnread } = useChatStore();
   const unreadCounts = useChatStore(s => s.unreadCounts);
+  const dmPeerMap = useChatStore(s => s.dmPeerMap); // memberName→roomId (소켓 수신 시 즉시 저장)
 
   const [members, setMembers] = useState([]);
   // memberName → { roomId, lastMessage } 즉시 업데이트 가능한 로컬 맵
@@ -127,7 +128,9 @@ export default function DMListPage() {
             ? <div style={{ padding: '20px', textAlign: 'center', color: '#404060', fontSize: 14 }}>다른 캠프원이 없습니다</div>
             : members.map(member => {
             const dm = dmRoomsMap[member.name];
-            const unread = dm?.roomId ? (unreadCounts[dm.roomId] || 0) : 0;
+            // chatStore.dmPeerMap 우선 사용 (API 없이도 즉시 표시), 없으면 로컬 dmRoomsMap
+            const roomId = dmPeerMap[member.name] || dm?.roomId;
+            const unread = roomId ? (unreadCounts[roomId] || 0) : 0;
             const isLoading = starting === member.id;
             return (
               <button

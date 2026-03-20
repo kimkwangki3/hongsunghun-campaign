@@ -55,7 +55,7 @@ export default function Layout() {
   const logout = useAuthStore(s => s.logout);
   const groupUnread = useChatStore(s => s.groupUnread());
   const dmUnread = useChatStore(s => s.dmUnread());
-  const { setRooms, initUnread, incrementUnread } = useChatStore();
+  const { setRooms, initUnread, incrementUnread, setDmPeer } = useChatStore();
   const [toast, setToast] = useState(null);
 
   const isChatRoom = /^\/chat\/.+/.test(location.pathname);
@@ -84,6 +84,10 @@ export default function Layout() {
       // 현재 보고 있는 방이 아닐 때만 미읽음 증가 (roomType도 함께 등록)
       if (msg.roomId !== currentRoomId) {
         incrementUnread(msg.roomId, msg.roomType);
+      }
+      // DM이면 senderName→roomId 매핑 즉시 저장 (DMListPage 미탑재 상태에서도 배지 표시)
+      if (msg.roomType === 'direct' && msg.senderId !== user?.id) {
+        setDmPeer(msg.senderName, msg.roomId);
       }
       if (msg.senderId !== user?.id) {
         const preview = getPreview(msg.content);
