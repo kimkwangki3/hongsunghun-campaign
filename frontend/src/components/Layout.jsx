@@ -60,11 +60,32 @@ export default function Layout() {
 
   const isChatRoom = /^\/chat\/.+/.test(location.pathname);
   const currentRoomId = location.pathname.match(/^\/chat\/(.+)/)?.[1] ?? null;
+  const [showNotiPrompt, setShowNotiPrompt] = useState(false);
 
-  // 로그인 시 알림 권한 요청 + 방 목록 로드 (미읽음 카운트 초기화 1회)
+  // 알림 허용 배너: iOS PWA는 버튼 클릭 필요, 그 외는 자동 요청
+  useEffect(() => {
+    if (!user || !('Notification' in window)) return;
+    if (Notification.permission === 'granted') return;
+    if (Notification.permission === 'denied') return;
+    // iOS PWA 감지: standalone 모드 + iOS
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+    if (isIOS && isStandalone) {
+      setShowNotiPrompt(true); // 버튼 배너 표시
+    } else {
+      requestNotificationPermission(); // 그 외는 자동 요청
+    }
+  }, [user?.id]);
+
+  async function handleNotiAllow() {
+    setShowNotiPrompt(false);
+    const { initPushNotifications } = await import('../utils/pushManager');
+    await initPushNotifications();
+  }
+
+  // 로그인 시 방 목록 로드 (미읽음 카운트 초기화 1회)
   useEffect(() => {
     if (!user) return;
-    requestNotificationPermission();
     api.get('/chat/rooms')
       .then(r => {
         const rooms = r.data.data || [];
@@ -151,6 +172,29 @@ export default function Layout() {
             }}>로그아웃</button>
           </div>
         </header>
+      )}
+
+      {/* iOS PWA 알림 허용 배너 */}
+      {showNotiPrompt && (
+        <div style={{
+          background:'#1a1a4a', borderBottom:'1px solid rgba(129,140,248,0.3)',
+          padding:'10px 16px', display:'flex', alignItems:'center', gap:10,
+          flexShrink:0
+        }}>
+          <span style={{ fontSize:20 }}>🔔</span>
+          <span style={{ flex:1, fontSize:13, color:'#c0c0e8' }}>
+            슬립 중 알림을 받으려면 알림을 허용해 주세요
+          </span>
+          <button onClick={handleNotiAllow} style={{
+            background:'#4f46e5', color:'#fff', border:'none',
+            borderRadius:8, padding:'6px 14px', fontSize:13, fontWeight:700,
+            cursor:'pointer', fontFamily:"'Noto Sans KR', sans-serif"
+          }}>허용</button>
+          <button onClick={() => setShowNotiPrompt(false)} style={{
+            background:'none', color:'#50507a', border:'none',
+            fontSize:18, cursor:'pointer', lineHeight:1, padding:'0 4px'
+          }}>✕</button>
+        </div>
       )}
 
       {/* 본문 */}
