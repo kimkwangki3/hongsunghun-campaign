@@ -88,20 +88,30 @@ jobs:
           sed -i 's/compileSdkVersion [0-9]*/compileSdkVersion 34/' $GRADLE
           sed -i 's/targetSdkVersion [0-9]*/targetSdkVersion 34/' $GRADLE
 
-          # Firebase BOM + FCM 의존성 추가
+          # app/build.gradle 끝에 Firebase 의존성 + google-services plugin 추가
           cat >> $GRADLE << 'DEPS'
 
           dependencies {
               implementation platform('com.google.firebase:firebase-bom:32.7.0')
               implementation 'com.google.firebase:firebase-messaging'
           }
-
-          apply plugin: "com.google.gms.google-services"
           DEPS
+          echo 'apply plugin: "com.google.gms.google-services"' >> $GRADLE
 
-          # 프로젝트 build.gradle에 google-services classpath 추가
-          PROJ=cap-build/android/build.gradle
-          sed -i "/classpath 'com.android.tools.build:gradle/a\\        classpath 'com.google.gms:google-services:4.4.1'" $PROJ
+          # 프로젝트 build.gradle에 google-services classpath 추가 (Python으로 안전하게)
+          python3 - << 'PYEOF'
+          import re
+          path = 'cap-build/android/build.gradle'
+          content = open(path).read()
+          # buildscript dependencies 블록 안에 classpath 추가
+          content = content.replace(
+              "classpath 'com.android.tools.build:gradle",
+              "classpath 'com.google.gms:google-services:4.4.1'\n        classpath 'com.android.tools.build:gradle",
+              1
+          )
+          open(path, 'w').write(content)
+          print('✅ google-services classpath 추가 완료')
+          PYEOF
 
       - name: Configure release signing
         run: |
