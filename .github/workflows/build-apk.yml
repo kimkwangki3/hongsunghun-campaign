@@ -1,0 +1,79 @@
+name: 홍캠프 APK 빌드
+
+on:
+  workflow_dispatch:   # GitHub에서 수동 실행 가능
+  push:
+    branches: [master]
+    paths:
+      - '.github/workflows/build-apk.yml'  # 이 파일 변경 시만 자동 빌드
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Java 17 설정
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Node.js 20 설정
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Capacitor 설정 파일 생성 (서버 URL 모드)
+        run: |
+          mkdir -p www
+          echo '<html><body>Loading...</body></html>' > www/index.html
+          cat > capacitor.config.json << 'EOF'
+          {
+            "appId": "com.hongsunghun.campaign",
+            "appName": "홍캠프",
+            "webDir": "www",
+            "server": {
+              "url": "https://hongsunghun-campaign.onrender.com",
+              "cleartext": false,
+              "androidScheme": "https"
+            },
+            "android": {
+              "allowMixedContent": false,
+              "captureInput": true
+            },
+            "plugins": {
+              "PushNotifications": {
+                "presentationOptions": ["badge", "sound", "alert"]
+              }
+            }
+          }
+          EOF
+
+      - name: Capacitor 패키지 설치
+        run: |
+          npm init -y
+          npm install @capacitor/core @capacitor/android @capacitor/cli
+
+      - name: Android 플랫폼 추가
+        run: npx cap add android
+
+      - name: Gradle 빌드 권한 설정
+        run: chmod +x android/gradlew
+
+      - name: APK 빌드 (디버그)
+        run: cd android && ./gradlew assembleDebug --no-daemon
+
+      - name: APK 업로드 (아티팩트)
+        uses: actions/upload-artifact@v4
+        with:
+          name: 홍캠프-APK
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30
+
+      - name: 빌드 결과 출력
+        run: |
+          echo "✅ APK 빌드 완료!"
+          ls -lh android/app/build/outputs/apk/debug/
