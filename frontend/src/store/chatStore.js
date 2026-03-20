@@ -29,8 +29,9 @@ export const useChatStore = create((set, get) => ({
   setUnread: (roomId, count) => set(s => ({
     unreadCounts: { ...s.unreadCounts, [roomId]: count }
   })),
-  incrementUnread: (roomId) => set(s => ({
-    unreadCounts: { ...s.unreadCounts, [roomId]: (s.unreadCounts[roomId] || 0) + 1 }
+  incrementUnread: (roomId, roomType) => set(s => ({
+    unreadCounts: { ...s.unreadCounts, [roomId]: (s.unreadCounts[roomId] || 0) + 1 },
+    roomTypes: roomType ? { ...s.roomTypes, [roomId]: roomType } : s.roomTypes,
   })),
   clearUnread: (roomId) => set(s => ({
     unreadCounts: { ...s.unreadCounts, [roomId]: 0 }
@@ -39,10 +40,11 @@ export const useChatStore = create((set, get) => ({
   totalUnread: () => Object.values(get().unreadCounts).reduce((a, b) => a + b, 0),
 
   // 그룹/공지 채팅 미읽음 합계 (채팅 탭 배지용)
+  // roomTypes에 등록된 것만 카운트 (undefined는 제외해서 DM이 채팅 탭에 섞이지 않도록)
   groupUnread: () => {
     const { unreadCounts, roomTypes } = get();
     return Object.entries(unreadCounts)
-      .filter(([id]) => roomTypes[id] !== 'direct')
+      .filter(([id]) => roomTypes[id] !== undefined && roomTypes[id] !== 'direct')
       .reduce((sum, [, c]) => sum + c, 0);
   },
 

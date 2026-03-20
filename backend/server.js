@@ -90,10 +90,14 @@ io.on('connection', async (socket) => {
         [msgId, roomId, userId, encryptedContent, type, now]
       );
 
-      const sender = await db.get('SELECT name FROM users WHERE id = $1', [userId]);
+      const [sender, roomInfo] = await Promise.all([
+        db.get('SELECT name FROM users WHERE id = $1', [userId]),
+        db.get('SELECT name, type FROM rooms WHERE id = $1', [roomId])
+      ]);
       const message = {
         id: msgId,
         roomId,
+        roomType: roomInfo?.type || 'group',
         senderId: userId,
         senderName: sender.name,
         content,
@@ -103,9 +107,6 @@ io.on('connection', async (socket) => {
 
       // 같은 방 모두에게 전송
       io.to(roomId).emit('new_message', message);
-
-      // DM(direct) 방이면 admin에게도 소켓 알림 전송 (admin은 방 멤버가 아님)
-      const roomInfo = await db.get('SELECT name, type FROM rooms WHERE id = $1', [roomId]);
       if (roomInfo?.type === 'direct') {
         const admins = await db.all(
           "SELECT id FROM users WHERE role = 'admin' AND id != $1",

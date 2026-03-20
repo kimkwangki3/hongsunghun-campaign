@@ -76,9 +76,9 @@ export default function Layout() {
 
   const { connected } = useSocket({
     onNewMessage: (msg) => {
-      // 현재 보고 있는 방이 아닐 때만 미읽음 증가
+      // 현재 보고 있는 방이 아닐 때만 미읽음 증가 (roomType도 함께 등록)
       if (msg.roomId !== currentRoomId) {
-        incrementUnread(msg.roomId);
+        incrementUnread(msg.roomId, msg.roomType);
       }
       if (msg.senderId !== user?.id) {
         const preview = getPreview(msg.content);
