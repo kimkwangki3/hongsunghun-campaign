@@ -1,9 +1,8 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { useAuthStore } from './store/authStore';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
-import ChatRoomPage from './pages/ChatRoomPage';
 import ChatPage from './pages/ChatPage';
 import SchedulePage from './pages/SchedulePage';
 import ScheduleAddPage from './pages/ScheduleAddPage';
@@ -51,7 +50,9 @@ export default function App() {
   return (
     <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
       <Routes>
-        <Route path="/login" element={<LoginPage />} />
+        <Route path="/login" element={
+          isTokenValid(token) ? <Navigate to="/" replace /> : <LoginPage />
+        } />
         <Route path="/" element={
           <ProtectedRoute>
             <Layout />

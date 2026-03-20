@@ -209,7 +209,10 @@ export default function ChatPage() {
         display: 'flex', alignItems: 'center', gap: 12,
         flexShrink: 0
       }}>
-        <button onClick={() => navigate(-1)} style={{
+        <button onClick={() => {
+          if (roomInfo?.type === 'direct') navigate('/dm');
+          else navigate('/');
+        }} style={{
           background: 'none', border: 'none', cursor: 'pointer',
           color: '#818cf8', padding: '4px 8px 4px 0', fontSize: 20
         }}>←</button>

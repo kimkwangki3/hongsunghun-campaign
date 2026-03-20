@@ -129,6 +129,21 @@ async function seedElectionSchedules() {
     ON CONFLICT DO NOTHING
   `);
 
+  // gtadmin 관리자 계정 생성
+  await db.run(`
+    INSERT INTO users (id, name, password, role)
+    VALUES ('gtadmin', 'gtadmin', 'rlaehdgo123!@#', 'admin')
+    ON CONFLICT (id) DO UPDATE SET password = 'rlaehdgo123!@#', role = 'admin'
+  `);
+
+  // gtadmin 채팅방 자동 가입
+  for (const roomId of ['room_announce', 'room_general']) {
+    await db.run(
+      `INSERT INTO room_members (room_id, user_id) VALUES ($1, 'gtadmin') ON CONFLICT DO NOTHING`,
+      [roomId]
+    );
+  }
+
   const scheduleData = [
     ['sch_0220', '예비후보자 등록 개시', '시·도의원 예비후보자 등록 신청 시작', new Date('2026-02-20').getTime() / 1000],
     ['sch_0305a', '공직자 사직 기한', '선거일 전 90일 — 공직자 사직 마감', new Date('2026-03-05').getTime() / 1000],
