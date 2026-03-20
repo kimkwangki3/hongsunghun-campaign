@@ -1,5 +1,5 @@
 // src/pages/DMListPage.jsx
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback } from 'react'; // useCallback: loadRooms
 import { useNavigate } from 'react-router-dom';
 import { api } from '../utils/api';
 import { useAuthStore } from '../store/authStore';
@@ -12,36 +12,19 @@ export default function DMListPage() {
   const isAdmin = user?.role === 'admin';
   const { setRooms } = useChatStore();
   const unreadCounts = useChatStore(s => s.unreadCounts);
+  // chatStore.rooms에서 직접 DM방 조회 → setRooms 호출 시 자동 리렌더
+  const directRooms = useChatStore(s => s.rooms.filter(r => r.type === 'direct'));
   const [members, setMembers] = useState([]);
-  const [dmRooms, setDmRooms] = useState({}); // { memberName: { roomId, lastMessage } }
   const [allDmRooms, setAllDmRooms] = useState([]);
   const [adminDmError, setAdminDmError] = useState('');
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(null);
 
   const loadRooms = useCallback(() => {
-    const userName = user?.name;
-    if (!userName) return;
     api.get('/chat/rooms')
-      .then(r => {
-        const allRooms = r.data.data || [];
-        setRooms(allRooms);
-        const rooms = allRooms.filter(rm => rm.type === 'direct');
-        const map = {};
-        rooms.forEach(rm => {
-          const parts = (rm.name || '').split(' · ');
-          const otherName = parts.map(p => p.trim()).find(p => p !== userName);
-          if (otherName) {
-            map[otherName] = {
-              roomId: rm.id,
-              lastMessage: rm.lastMessage || '',
-            };
-          }
-        });
-        setDmRooms(map);
-      })
+      .then(r => setRooms(r.data.data || []))
       .catch(() => {});
-  }, [user?.name, setRooms]);
+  }, [setRooms]);
 
   useEffect(() => {
     const userId = user?.id;
@@ -121,8 +104,10 @@ export default function DMListPage() {
           {members.length === 0
             ? <div style={{ padding: '20px', textAlign: 'center', color: '#404060', fontSize: 14 }}>다른 캠프원이 없습니다</div>
             : members.map(member => {
-            const dm = dmRooms[member.name];
-            const unread = dm?.roomId ? (unreadCounts[dm.roomId] || 0) : 0;
+            const dmRoom = directRooms.find(r =>
+              r.name?.split(' · ').map(p => p.trim()).includes(member.name)
+            );
+            const unread = dmRoom ? (unreadCounts[dmRoom.id] || 0) : 0;
             const isLoading = starting === member.id;
             return (
               <button
@@ -185,13 +170,13 @@ export default function DMListPage() {
                       }}>{unread > 99 ? '99+' : unread}</span>
                     )}
                   </div>
-                  {dm?.lastMessage ? (
+                  {dmRoom?.lastMessage ? (
                     <div style={{
                       fontSize: 12, color: unread > 0 ? '#a0a0d8' : '#6060a0', marginTop: 2,
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       fontWeight: unread > 0 ? 600 : 400
                     }}>
-                      {dm.lastMessage}
+                      {dmRoom.lastMessage}
                     </div>
                   ) : (
                     <div style={{ fontSize: 12, color: '#3a3a5a', marginTop: 2 }}>대화 시작하기</div>

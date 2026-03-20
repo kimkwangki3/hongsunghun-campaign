@@ -11,10 +11,8 @@ export const useChatStore = create((set, get) => ({
     const counts = { ...get().unreadCounts };
     rooms.forEach(r => {
       types[r.id] = r.type;
-      // 처음 로드 시에만 서버 값으로 초기화 (이미 증가된 값 보존)
-      if (counts[r.id] === undefined) {
-        counts[r.id] = parseInt(r.unread_count) || 0;
-      }
+      // 서버 값을 항상 반영 (서버가 정확한 미읽음 수의 기준)
+      counts[r.id] = parseInt(r.unread_count) || 0;
     });
     set({ rooms, roomTypes: types, unreadCounts: counts });
   },
