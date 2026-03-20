@@ -57,6 +57,8 @@ function RoomItem({ room, onClick }) {
   const timeStr = room.last_msg_at
     ? formatDistanceToNow(new Date(room.last_msg_at * 1000), { addSuffix: true, locale: ko })
     : '';
+  // room.unread_count 대신 chatStore의 unreadCounts 사용 (실시간 소켓 추적값)
+  const unread = useChatStore(s => s.unreadCounts[room.id] || 0);
 
   return (
     <button onClick={onClick} style={{
@@ -77,7 +79,7 @@ function RoomItem({ room, onClick }) {
         fontSize: 22, position: 'relative'
       }}>
         {icon}
-        {room.unread_count > 0 && (
+        {unread > 0 && (
           <span style={{
             position: 'absolute', top: -4, right: -4,
             background: '#ef4444', color: '#fff', fontSize: 10, fontWeight: 700,
@@ -85,7 +87,7 @@ function RoomItem({ room, onClick }) {
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             padding: '0 4px', border: '2px solid #0d0d1a'
           }}>
-            {room.unread_count > 99 ? '99+' : room.unread_count}
+            {unread > 99 ? '99+' : unread}
           </span>
         )}
       </div>
@@ -97,9 +99,9 @@ function RoomItem({ room, onClick }) {
           <span style={{ fontSize: 11, color: '#50507a', flexShrink: 0 }}>{timeStr}</span>
         </div>
         <div style={{
-          fontSize: 13, color: room.unread_count > 0 ? '#b0b0d8' : '#50507a',
+          fontSize: 13, color: unread > 0 ? '#b0b0d8' : '#50507a',
           overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-          fontWeight: room.unread_count > 0 ? 500 : 400
+          fontWeight: unread > 0 ? 500 : 400
         }}>
           {room.lastMessage || '아직 메시지가 없습니다'}
         </div>
