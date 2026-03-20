@@ -4,6 +4,7 @@ import { useAuthStore } from './store/authStore';
 import Layout from './components/Layout';
 import LoginPage from './pages/LoginPage';
 import ChatPage from './pages/ChatPage';
+import ChatRoomPage from './pages/ChatRoomPage';
 import SchedulePage from './pages/SchedulePage';
 import ScheduleAddPage from './pages/ScheduleAddPage';
 import DMListPage from './pages/DMListPage';
@@ -59,7 +60,7 @@ export default function App() {
           </ProtectedRoute>
         }>
           <Route index element={<HomePage />} />
-          <Route path="chat" element={<Navigate to="/chat/room_general" replace />} />
+          <Route path="chat" element={<ChatRoomPage />} />
           <Route path="chat/:roomId" element={<ChatPage />} />
           <Route path="schedule" element={<SchedulePage />} />
           <Route path="schedule/add" element={<ScheduleAddPage />} />
