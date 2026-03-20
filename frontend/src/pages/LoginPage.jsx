@@ -90,7 +90,7 @@ export default function LoginPage() {
 
         <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
           <Input label="이름" value={form.name} onChange={update('name')} placeholder="홍길동" />
-          <Input label="비밀번호 (6자리 이하)" value={form.password} onChange={update('password')} placeholder="••••••" type="password" maxLength={6} />
+          <Input label={mode === 'register' ? '비밀번호 (6자리 이하)' : '비밀번호'} value={form.password} onChange={update('password')} placeholder="••••••" type="password" maxLength={mode === 'register' ? 6 : undefined} />
 
           {error && (
             <div style={{
