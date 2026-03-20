@@ -1,5 +1,5 @@
 // src/pages/DMListPage.jsx
-import { useEffect, useState, useCallback } from 'react'; // useCallback: loadRooms
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../utils/api';
 import { useAuthStore } from '../store/authStore';
@@ -12,25 +12,38 @@ export default function DMListPage() {
   const isAdmin = user?.role === 'admin';
   const { setRooms } = useChatStore();
   const unreadCounts = useChatStore(s => s.unreadCounts);
-  // chatStore.rooms에서 직접 DM방 조회 → setRooms 호출 시 자동 리렌더
-  const directRooms = useChatStore(s => s.rooms.filter(r => r.type === 'direct'));
+
   const [members, setMembers] = useState([]);
+  // memberName → { roomId, lastMessage } 즉시 업데이트 가능한 로컬 맵
+  const [dmRoomsMap, setDmRoomsMap] = useState({});
   const [allDmRooms, setAllDmRooms] = useState([]);
   const [adminDmError, setAdminDmError] = useState('');
   const [loading, setLoading] = useState(true);
   const [starting, setStarting] = useState(null);
 
   const loadRooms = useCallback(() => {
+    const userName = user?.name;
+    if (!userName) return;
     api.get('/chat/rooms')
-      .then(r => setRooms(r.data.data || []))
+      .then(r => {
+        const allRooms = r.data.data || [];
+        setRooms(allRooms);
+        // API 응답으로 맵 전체 동기화
+        const map = {};
+        allRooms.filter(rm => rm.type === 'direct').forEach(rm => {
+          const parts = (rm.name || '').split(' · ');
+          const otherName = parts.map(p => p.trim()).find(p => p !== userName);
+          if (otherName) map[otherName] = { roomId: rm.id, lastMessage: rm.lastMessage || '' };
+        });
+        setDmRoomsMap(prev => ({ ...prev, ...map }));
+      })
       .catch(() => {});
-  }, [setRooms]);
+  }, [user?.name, setRooms]);
 
   useEffect(() => {
     const userId = user?.id;
     if (!userId) return;
 
-    // 멤버 목록: 본인·admin 제외
     api.get('/chat/members')
       .then(r => {
         const all = r.data.data || [];
@@ -52,10 +65,19 @@ export default function DMListPage() {
     setLoading(false);
   }, [user?.id, user?.name, isAdmin]);
 
-  // 새 DM 메시지 수신 시 방 목록 새로고침 (새 DM방이 생겼을 수 있음)
+  // 새 DM 수신 → senderName+roomId로 즉시 맵 업데이트 (API 대기 없음)
   useSocket({
     onNewMessage: (msg) => {
       if (msg.roomType === 'direct') {
+        // 상대방 이름으로 즉시 roomId 매핑 (내가 보낸 것 제외)
+        const peerName = msg.senderId !== user?.id ? msg.senderName : null;
+        if (peerName) {
+          setDmRoomsMap(prev => ({
+            ...prev,
+            [peerName]: { roomId: msg.roomId, lastMessage: prev[peerName]?.lastMessage || '' }
+          }));
+        }
+        // API로 lastMessage 등 전체 동기화 (배지는 이미 위에서 표시됨)
         loadRooms();
         if (isAdmin) {
           api.get('/chat/admin/dms')
@@ -96,7 +118,6 @@ export default function DMListPage() {
         <div style={{ padding: 40, textAlign: 'center', color: '#404060', fontSize: 14 }}>불러오는 중...</div>
       ) : (
         <>
-        {/* 내 1:1 대화 목록 */}
         <div style={{ padding: '12px 20px 4px', fontSize: 11, fontWeight: 700, color: '#50507a', letterSpacing: '0.05em' }}>
           내 대화
         </div>
@@ -104,10 +125,8 @@ export default function DMListPage() {
           {members.length === 0
             ? <div style={{ padding: '20px', textAlign: 'center', color: '#404060', fontSize: 14 }}>다른 캠프원이 없습니다</div>
             : members.map(member => {
-            const dmRoom = directRooms.find(r =>
-              r.name?.split(' · ').map(p => p.trim()).includes(member.name)
-            );
-            const unread = dmRoom ? (unreadCounts[dmRoom.id] || 0) : 0;
+            const dm = dmRoomsMap[member.name];
+            const unread = dm?.roomId ? (unreadCounts[dm.roomId] || 0) : 0;
             const isLoading = starting === member.id;
             return (
               <button
@@ -170,13 +189,13 @@ export default function DMListPage() {
                       }}>{unread > 99 ? '99+' : unread}</span>
                     )}
                   </div>
-                  {dmRoom?.lastMessage ? (
+                  {dm?.lastMessage ? (
                     <div style={{
                       fontSize: 12, color: unread > 0 ? '#a0a0d8' : '#6060a0', marginTop: 2,
                       overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                       fontWeight: unread > 0 ? 600 : 400
                     }}>
-                      {dmRoom.lastMessage}
+                      {dm.lastMessage}
                     </div>
                   ) : (
                     <div style={{ fontSize: 12, color: '#3a3a5a', marginTop: 2 }}>대화 시작하기</div>
