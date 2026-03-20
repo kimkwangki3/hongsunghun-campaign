@@ -1,11 +1,11 @@
 name: 홍캠프 APK 빌드
 
 on:
-  workflow_dispatch:   # GitHub에서 수동 실행 가능
+  workflow_dispatch:
   push:
     branches: [master]
     paths:
-      - '.github/workflows/build-apk.yml'  # 이 파일 변경 시만 자동 빌드
+      - '.github/workflows/build-apk.yml'
 
 jobs:
   build:
@@ -26,11 +26,14 @@ jobs:
         with:
           node-version: '20'
 
-      - name: Capacitor 설정 파일 생성 (서버 URL 모드)
+      - name: Capacitor 빌드 디렉토리 생성
         run: |
-          mkdir -p www
-          echo '<html><body>Loading...</body></html>' > www/index.html
-          cat > capacitor.config.json << 'EOF'
+          mkdir -p cap-build/www
+          echo '<html><body>Loading...</body></html>' > cap-build/www/index.html
+
+      - name: capacitor.config.json 생성
+        run: |
+          cat > cap-build/capacitor.config.json << 'CAPEOF'
           {
             "appId": "com.hongsunghun.campaign",
             "appName": "홍캠프",
@@ -43,37 +46,34 @@ jobs:
             "android": {
               "allowMixedContent": false,
               "captureInput": true
-            },
-            "plugins": {
-              "PushNotifications": {
-                "presentationOptions": ["badge", "sound", "alert"]
-              }
             }
           }
-          EOF
+          CAPEOF
 
-      - name: Capacitor 패키지 설치
+      - name: package.json 생성 및 Capacitor 설치
+        working-directory: cap-build
         run: |
           npm init -y
           npm install @capacitor/core @capacitor/android @capacitor/cli
 
       - name: Android 플랫폼 추가
+        working-directory: cap-build
         run: npx cap add android
 
-      - name: Gradle 빌드 권한 설정
-        run: chmod +x android/gradlew
+      - name: APK 빌드
+        working-directory: cap-build/android
+        run: |
+          chmod +x gradlew
+          ./gradlew assembleDebug --no-daemon
 
-      - name: APK 빌드 (디버그)
-        run: cd android && ./gradlew assembleDebug --no-daemon
-
-      - name: APK 업로드 (아티팩트)
+      - name: APK 업로드
         uses: actions/upload-artifact@v4
         with:
           name: 홍캠프-APK
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          path: cap-build/android/app/build/outputs/apk/debug/app-debug.apk
           retention-days: 30
 
-      - name: 빌드 결과 출력
+      - name: 완료 메시지
         run: |
           echo "✅ APK 빌드 완료!"
-          ls -lh android/app/build/outputs/apk/debug/
+          ls -lh cap-build/android/app/build/outputs/apk/debug/
