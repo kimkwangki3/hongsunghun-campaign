@@ -138,17 +138,19 @@ io.on('connection', async (socket) => {
           .filter(t => !offlineMembers.some(m => m.token === t));
       }
 
-      const offlineTokens = [
-        ...offlineMembers.filter(m => !onlineUsers.has(m.id)).map(m => m.token).filter(Boolean),
+      // 소켓 온라인 여부 관계없이 모두 FCM 발송 (슬립모드 대응)
+      // 서비스워커 onBackgroundMessage는 페이지 포커스 시 발동 안 함 → 중복 없음
+      const allTokens = [
+        ...offlineMembers.map(m => m.token).filter(Boolean),
         ...extraTokens
       ];
 
-      if (offlineTokens.length > 0) {
-        sendPush(offlineTokens, {
+      if (allTokens.length > 0) {
+        sendPush(allTokens, {
           title: `💬 ${roomInfo?.name || '새 메시지'}`,
           body: `${sender.name}: ${content.substring(0, 50)}`,
           data: { type: 'chat', roomId }
-        });
+        }).catch(() => {});
       }
     } catch (err) {
       console.error('메시지 전송 오류:', err);
