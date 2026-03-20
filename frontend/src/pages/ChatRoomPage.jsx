@@ -11,7 +11,7 @@ const ROOM_TYPE_COLOR = { announce: '#f59e0b', group: '#818cf8', direct: '#34d39
 
 export default function ChatRoomPage() {
   const navigate = useNavigate();
-  const { rooms, setRooms } = useChatStore();
+  const { rooms, setRooms, clearUnread } = useChatStore();
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -43,7 +43,7 @@ export default function ChatRoomPage() {
       ) : (
         <div>
           {chatRooms.map(room => (
-            <RoomItem key={room.id} room={room} onClick={() => navigate(`/chat/${room.id}`)} />
+            <RoomItem key={room.id} room={room} onClick={() => { clearUnread(room.id); navigate(`/chat/${room.id}`); }} />
           ))}
         </div>
       )}

@@ -10,7 +10,7 @@ export default function DMListPage() {
   const navigate = useNavigate();
   const user = useAuthStore(s => s.user);
   const isAdmin = user?.role === 'admin';
-  const { setRooms } = useChatStore();
+  const { setRooms, clearUnread } = useChatStore();
   const unreadCounts = useChatStore(s => s.unreadCounts);
 
   const [members, setMembers] = useState([]);
@@ -92,6 +92,7 @@ export default function DMListPage() {
     setStarting(targetUserId);
     try {
       const res = await api.post('/chat/dm', { targetUserId });
+      clearUnread(res.data.data.roomId);
       navigate(`/chat/${res.data.data.roomId}`);
     } catch (err) {
       console.error(err);
