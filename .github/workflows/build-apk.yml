@@ -40,19 +40,22 @@ jobs:
         working-directory: cap-build
         run: npx cap add android
 
-      - name: Set custom app icon
+      - name: Apply custom icon
         run: |
           MIPMAP=cap-build/android/app/src/main/res
-          cp frontend/public/icons/icon-72.png  $MIPMAP/mipmap-hdpi/ic_launcher.png
-          cp frontend/public/icons/icon-72.png  $MIPMAP/mipmap-hdpi/ic_launcher_round.png
-          cp frontend/public/icons/icon-96.png  $MIPMAP/mipmap-xhdpi/ic_launcher.png
-          cp frontend/public/icons/icon-96.png  $MIPMAP/mipmap-xhdpi/ic_launcher_round.png
+          for dir in mipmap-hdpi mipmap-xhdpi mipmap-xxhdpi mipmap-xxxhdpi mipmap-mdpi; do
+            mkdir -p $MIPMAP/$dir
+          done
+          cp frontend/public/icons/icon-72.png $MIPMAP/mipmap-hdpi/ic_launcher.png
+          cp frontend/public/icons/icon-72.png $MIPMAP/mipmap-hdpi/ic_launcher_round.png
+          cp frontend/public/icons/icon-96.png $MIPMAP/mipmap-xhdpi/ic_launcher.png
+          cp frontend/public/icons/icon-96.png $MIPMAP/mipmap-xhdpi/ic_launcher_round.png
           cp frontend/public/icons/icon-144.png $MIPMAP/mipmap-xxhdpi/ic_launcher.png
           cp frontend/public/icons/icon-144.png $MIPMAP/mipmap-xxhdpi/ic_launcher_round.png
           cp frontend/public/icons/icon-192.png $MIPMAP/mipmap-xxxhdpi/ic_launcher.png
           cp frontend/public/icons/icon-192.png $MIPMAP/mipmap-xxxhdpi/ic_launcher_round.png
-          convert frontend/public/icons/icon-72.png -resize 48x48 $MIPMAP/mipmap-mdpi/ic_launcher.png
-          convert frontend/public/icons/icon-72.png -resize 48x48 $MIPMAP/mipmap-mdpi/ic_launcher_round.png
+          cp frontend/public/icons/icon-72.png $MIPMAP/mipmap-mdpi/ic_launcher.png
+          cp frontend/public/icons/icon-72.png $MIPMAP/mipmap-mdpi/ic_launcher_round.png
 
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
@@ -63,17 +66,16 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: gradle-${{ runner.os }}-${{ hashFiles('cap-build/android/gradle/wrapper/gradle-wrapper.properties') }}
+          key: gradle-${{ runner.os }}-v2
           restore-keys: gradle-${{ runner.os }}-
 
       - name: Build APK
         working-directory: cap-build/android
         run: |
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --warning-mode=none
+          ./gradlew assembleDebug --no-daemon
         env:
           GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.workers.max=2 -Xmx2g
-          JAVA_TOOL_OPTIONS: -Xmx2g
 
       - uses: actions/upload-artifact@v4
         with:
