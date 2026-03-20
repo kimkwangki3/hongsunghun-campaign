@@ -1,15 +1,18 @@
 // src/pages/DMListPage.jsx
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../utils/api';
 import { useAuthStore } from '../store/authStore';
+import { useChatStore } from '../store/chatStore';
 
 export default function DMListPage() {
   const navigate = useNavigate();
   const user = useAuthStore(s => s.user);
   const isAdmin = user?.role === 'admin';
+  const { setRooms } = useChatStore();
+  const unreadCounts = useChatStore(s => s.unreadCounts);
   const [members, setMembers] = useState([]);
-  const [dmRooms, setDmRooms] = useState({}); // { userId: { roomId, unread, lastMessage } }
+  const [dmRooms, setDmRooms] = useState({}); // { memberName: { roomId, lastMessage } }
   const [allDmRooms, setAllDmRooms] = useState([]); // admin 전용: 전체 DM방 목록
   const [adminDmError, setAdminDmError] = useState('');
   const [loading, setLoading] = useState(true);
@@ -28,10 +31,12 @@ export default function DMListPage() {
       })
       .catch(() => setMembers([]));
 
-    // 내 DM방 → 이름 기반으로 상대 매핑
+    // 내 DM방 → chatStore에 등록 + 이름 기반 매핑
     api.get('/chat/rooms')
       .then(r => {
-        const rooms = (r.data.data || []).filter(rm => rm.type === 'direct');
+        const allRooms = r.data.data || [];
+        setRooms(allRooms); // chatStore에 등록 (미읽음 카운트 포함)
+        const rooms = allRooms.filter(rm => rm.type === 'direct');
         const map = {};
         rooms.forEach(rm => {
           const parts = (rm.name || '').split(' · ');
@@ -39,7 +44,6 @@ export default function DMListPage() {
           if (otherName) {
             map[otherName] = {
               roomId: rm.id,
-              unread: parseInt(rm.unread_count) || 0,
               lastMessage: rm.lastMessage || '',
             };
           }
@@ -98,6 +102,7 @@ export default function DMListPage() {
             ? <div style={{ padding: '20px', textAlign: 'center', color: '#404060', fontSize: 14 }}>다른 캠프원이 없습니다</div>
             : members.map(member => {
             const dm = dmRooms[member.name];
+            const unread = dm?.roomId ? (unreadCounts[dm.roomId] || 0) : 0;
             const isLoading = starting === member.id;
             return (
               <button
@@ -124,7 +129,7 @@ export default function DMListPage() {
                   fontSize: 18, fontWeight: 700, color: '#fff', position: 'relative'
                 }}>
                   {member.name[0]}
-                  {dm?.unread > 0 && (
+                  {unread > 0 && (
                     <span style={{
                       position: 'absolute', top: -2, right: -2,
                       background: '#ef4444', color: '#fff',
@@ -132,7 +137,7 @@ export default function DMListPage() {
                       minWidth: 18, height: 18, borderRadius: 9,
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                       padding: '0 3px', border: '2px solid #0d0d1a'
-                    }}>1</span>
+                    }}>{unread > 99 ? '99+' : unread}</span>
                   )}
                 </div>
 

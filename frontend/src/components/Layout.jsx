@@ -4,6 +4,7 @@ import { Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
 import { useChatStore } from '../store/chatStore';
 import { useSocket } from '../hooks/useSocket';
+import { api } from '../utils/api';
 
 // 브라우저 알림 권한 요청
 function requestNotificationPermission() {
@@ -51,17 +52,22 @@ export default function Layout() {
   const navigate = useNavigate();
   const user = useAuthStore(s => s.user);
   const logout = useAuthStore(s => s.logout);
-  const totalUnread = useChatStore(s => s.totalUnread());
+  const groupUnread = useChatStore(s => s.groupUnread());
+  const dmUnread = useChatStore(s => s.dmUnread());
+  const { setRooms, incrementUnread } = useChatStore();
   const [toast, setToast] = useState(null);
 
-  // currentRoomId를 먼저 계산 (onNewMessage 클로저가 참조하기 전에)
   const isChatRoom = /^\/chat\/.+/.test(location.pathname);
   const currentRoomId = location.pathname.match(/^\/chat\/(.+)/)?.[1] ?? null;
 
-  // 로그인 시 알림 권한 요청
+  // 로그인 시 알림 권한 요청 + 방 목록 로드 (미읽음 카운트 초기화)
   useEffect(() => {
-    if (user) requestNotificationPermission();
-  }, [user]);
+    if (!user) return;
+    requestNotificationPermission();
+    api.get('/chat/rooms')
+      .then(r => setRooms(r.data.data || []))
+      .catch(() => {});
+  }, [user?.id]);
 
   function showToast(text) {
     setToast(text);
@@ -70,6 +76,10 @@ export default function Layout() {
 
   const { connected } = useSocket({
     onNewMessage: (msg) => {
+      // 현재 보고 있는 방이 아닐 때만 미읽음 증가
+      if (msg.roomId !== currentRoomId) {
+        incrementUnread(msg.roomId);
+      }
       if (msg.senderId !== user?.id) {
         const preview = getPreview(msg.content);
         const text = `💬 ${msg.senderName}: ${preview}`;
@@ -85,11 +95,11 @@ export default function Layout() {
   });
 
   const NAV = [
-    { path:'/',              label:'홈',    icon: HomeIcon    },
-    { path:'/chat',          label:'채팅',  icon: ChatIcon    },
-    { path:'/schedule',      label:'일정',  icon: CalIcon     },
-    { path:'/dm',            label:'1:1',   icon: DMIcon      },
-    ...(user?.role === 'admin' ? [{ path:'/admin', label:'관리', icon: GearIcon }] : []),
+    { path:'/',              label:'홈',    icon: HomeIcon,  badge: 0           },
+    { path:'/chat',          label:'채팅',  icon: ChatIcon,  badge: groupUnread },
+    { path:'/schedule',      label:'일정',  icon: CalIcon,   badge: 0           },
+    { path:'/dm',            label:'1:1',   icon: DMIcon,    badge: dmUnread    },
+    ...(user?.role === 'admin' ? [{ path:'/admin', label:'관리', icon: GearIcon, badge: 0 }] : []),
   ];
 
   return (
@@ -146,9 +156,8 @@ export default function Layout() {
           borderTop:'1px solid rgba(255,255,255,0.06)',
           paddingBottom:'env(safe-area-inset-bottom)', flexShrink:0
         }}>
-          {NAV.map(({ path, label, icon: Icon }) => {
+          {NAV.map(({ path, label, icon: Icon, badge }) => {
             const active = path === '/' ? location.pathname === '/' : location.pathname.startsWith(path);
-            const badge = label === '채팅' && totalUnread > 0 ? totalUnread : 0;
             return (
               <button key={path} onClick={() => navigate(path)} style={{
                 flex:1, padding:'10px 0 8px',
