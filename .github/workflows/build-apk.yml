@@ -40,6 +40,20 @@ jobs:
         working-directory: cap-build
         run: npx cap add android
 
+      - name: Set custom app icon
+        run: |
+          MIPMAP=cap-build/android/app/src/main/res
+          cp frontend/public/icons/icon-72.png  $MIPMAP/mipmap-hdpi/ic_launcher.png
+          cp frontend/public/icons/icon-72.png  $MIPMAP/mipmap-hdpi/ic_launcher_round.png
+          cp frontend/public/icons/icon-96.png  $MIPMAP/mipmap-xhdpi/ic_launcher.png
+          cp frontend/public/icons/icon-96.png  $MIPMAP/mipmap-xhdpi/ic_launcher_round.png
+          cp frontend/public/icons/icon-144.png $MIPMAP/mipmap-xxhdpi/ic_launcher.png
+          cp frontend/public/icons/icon-144.png $MIPMAP/mipmap-xxhdpi/ic_launcher_round.png
+          cp frontend/public/icons/icon-192.png $MIPMAP/mipmap-xxxhdpi/ic_launcher.png
+          cp frontend/public/icons/icon-192.png $MIPMAP/mipmap-xxxhdpi/ic_launcher_round.png
+          convert frontend/public/icons/icon-72.png -resize 48x48 $MIPMAP/mipmap-mdpi/ic_launcher.png
+          convert frontend/public/icons/icon-72.png -resize 48x48 $MIPMAP/mipmap-mdpi/ic_launcher_round.png
+
       - name: Accept Android SDK licenses
         run: yes | $ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
