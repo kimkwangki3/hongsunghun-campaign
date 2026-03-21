@@ -18,6 +18,9 @@ const { v4: uuidv4 } = require('uuid');
 const app = express();
 const server = http.createServer(app);
 
+// Render 등 리버스 프록시 신뢰 설정 (express-rate-limit X-Forwarded-For 오류 방지)
+app.set('trust proxy', 1);
+
 // CORS
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173').split(',');
 app.use(cors({ origin: ALLOWED_ORIGINS, credentials: true }));
