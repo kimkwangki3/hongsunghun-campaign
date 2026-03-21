@@ -6,6 +6,7 @@ const path = require('path');
 const { Server } = require('socket.io');
 const cors = require('cors');
 const helmet = require('helmet');
+const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const { initDB, db } = require('./database');
 const { verifyToken, verifyToken_raw } = require('./middleware/auth');
@@ -21,6 +22,7 @@ const server = http.createServer(app);
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || 'http://localhost:5173').split(',');
 app.use(cors({ origin: ALLOWED_ORIGINS, credentials: true }));
 app.use(helmet({ contentSecurityPolicy: false }));
+app.use(compression()); // gzip 압축
 app.use(express.json({ limit: '5mb' }));
 
 // Rate Limiting
@@ -177,12 +179,13 @@ io.on('connection', async (socket) => {
 
       if (unread.length === 0) return;
 
-      for (const m of unread) {
-        await db.run(
-          'INSERT INTO message_reads (message_id, user_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
-          [m.id, userId]
-        );
-      }
+      // 벌크 INSERT — 순차 루프 대비 훨씬 빠름
+      const placeholders = unread.map((_, i) => `($${i * 2 + 1}, $${i * 2 + 2})`).join(', ');
+      const values = unread.flatMap(m => [m.id, userId]);
+      await db.run(
+        `INSERT INTO message_reads (message_id, user_id) VALUES ${placeholders} ON CONFLICT DO NOTHING`,
+        values
+      );
 
       io.to(roomId).emit('messages_read', {
         userId,

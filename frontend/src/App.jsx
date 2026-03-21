@@ -56,6 +56,11 @@ export default function App() {
     if (!isIOSPWA) {
       initPushNotifications();
     }
+    // Render 무료 플랜 슬립 방지 — 8분마다 헬스체크 핑
+    const keepAlive = setInterval(() => {
+      fetch(`${import.meta.env.VITE_API_URL || ''}/health`).catch(() => {});
+    }, 8 * 60 * 1000);
+    return () => clearInterval(keepAlive);
   }, [token]);
 
   return (

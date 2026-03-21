@@ -172,16 +172,19 @@ router.get('/rooms/:roomId/messages', async (req, res) => {
       sinceAt = Math.max(twoDaysAgo, room?.cleared_at || 0);
     }
 
+    // JOIN 기반으로 N+1 서브쿼리 제거 (메시지 50개 → 쿼리 1번으로 처리)
     let query, params;
     if (before) {
       query = `
         SELECT m.id, m.room_id, m.sender_id, u.name as sender_name,
                m.content, m.type, m.is_deleted, m.created_at,
-               (SELECT COUNT(*) FROM message_reads mr WHERE mr.message_id = m.id) as read_count,
-               (EXISTS (SELECT 1 FROM message_reads mr2 WHERE mr2.message_id = m.id AND mr2.user_id = $5)) as read_by_me
+               COUNT(mr.message_id) AS read_count,
+               MAX(CASE WHEN mr.user_id = $5 THEN 1 ELSE 0 END) AS read_by_me
         FROM messages m
         JOIN users u ON m.sender_id = u.id
+        LEFT JOIN message_reads mr ON mr.message_id = m.id
         WHERE m.room_id = $1 AND m.created_at < $2 AND m.created_at >= $3
+        GROUP BY m.id, u.name
         ORDER BY m.created_at DESC
         LIMIT $4
       `;
@@ -190,11 +193,13 @@ router.get('/rooms/:roomId/messages', async (req, res) => {
       query = `
         SELECT m.id, m.room_id, m.sender_id, u.name as sender_name,
                m.content, m.type, m.is_deleted, m.created_at,
-               (SELECT COUNT(*) FROM message_reads mr WHERE mr.message_id = m.id) as read_count,
-               (EXISTS (SELECT 1 FROM message_reads mr2 WHERE mr2.message_id = m.id AND mr2.user_id = $4)) as read_by_me
+               COUNT(mr.message_id) AS read_count,
+               MAX(CASE WHEN mr.user_id = $4 THEN 1 ELSE 0 END) AS read_by_me
         FROM messages m
         JOIN users u ON m.sender_id = u.id
+        LEFT JOIN message_reads mr ON mr.message_id = m.id
         WHERE m.room_id = $1 AND m.created_at >= $3
+        GROUP BY m.id, u.name
         ORDER BY m.created_at DESC
         LIMIT $2
       `;
