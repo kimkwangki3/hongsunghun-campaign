@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { api } from '../utils/api';
 import { useAuthStore } from '../store/authStore';
@@ -69,6 +69,12 @@ export default function AccountingPage() {
   const [dlFrom, setDlFrom] = useState('');
   const [dlTo, setDlTo] = useState('');
   const [dlLoading, setDlLoading] = useState(false);
+  const [uploadFile, setUploadFile] = useState(null);
+  const [uploadPreview, setUploadPreview] = useState(null);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [uploadResult, setUploadResult] = useState(null);
+  const [recentReceipts, setRecentReceipts] = useState([]);
+  const fileInputRef = useRef(null);
 
   const toast = (m) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
 
@@ -86,9 +92,16 @@ export default function AccountingPage() {
     } catch {}
   }, [txFilter]);
 
-  useEffect(() => { loadSummary(); }, [loadSummary]);
+  const loadRecentReceipts = useCallback(async () => {
+    try {
+      const r = await api.get('/accounting/receipts');
+      setRecentReceipts((r.data.data || []).slice(0, 5));
+    } catch {}
+  }, []);
+
+  useEffect(() => { loadSummary(); loadRecentReceipts(); }, [loadSummary, loadRecentReceipts]);
   useEffect(() => {
-    if (tab === 0) loadSummary();
+    if (tab === 0) { loadSummary(); loadRecentReceipts(); }
     if (tab === 1) loadTransactions();
     if (tab === 2 && isAccountant) api.get('/accounting/sms?status=PENDING').then(r => setSmsList(r.data.data || [])).catch(() => {});
     if (tab === 3 && isAccountant) {
@@ -169,6 +182,39 @@ export default function AccountingPage() {
       const msg = e.response?.status === 404 ? '해당 기간 영수증 없음' : '다운로드 실패';
       toast(`❌ ${msg}`);
     } finally { setDlLoading(false); }
+  }
+
+  function handleFileSelect(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadFile(file);
+    setUploadResult(null);
+    const reader = new FileReader();
+    reader.onload = ev => setUploadPreview(ev.target.result);
+    reader.readAsDataURL(file);
+  }
+
+  async function handleReceiptUpload() {
+    if (!uploadFile) return;
+    setUploadLoading(true);
+    setUploadResult(null);
+    try {
+      const fd = new FormData();
+      fd.append('file', uploadFile);
+      const r = await api.post('/accounting/receipts/upload', fd, {
+        headers: { 'Content-Type': 'multipart/form-data' }
+      });
+      const d = r.data.data;
+      setUploadResult({ ok: true, data: d });
+      setUploadFile(null);
+      setUploadPreview(null);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      toast('✅ 영수증 저장 완료');
+      loadRecentReceipts();
+    } catch (e) {
+      setUploadResult({ ok: false, msg: e.response?.data?.message || '업로드 실패' });
+      toast('❌ 업로드 실패');
+    } finally { setUploadLoading(false); }
   }
 
   async function deleteTx(id) {
@@ -260,6 +306,123 @@ export default function AccountingPage() {
                 {summary.balance.toLocaleString()}원
               </div>
             </Card>
+
+            {/* ── 영수증 업로드 (전체 이용) ── */}
+            <Card>
+              <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>🧾 영수증 업로드</div>
+
+              {/* 파일 선택 영역 */}
+              <div
+                onClick={() => fileInputRef.current?.click()}
+                style={{
+                  border: `2px dashed ${uploadPreview ? S.accent : S.muted}`,
+                  borderRadius: 10, padding: uploadPreview ? 0 : '20px 0',
+                  textAlign: 'center', cursor: 'pointer', overflow: 'hidden',
+                  transition: 'border-color 0.2s'
+                }}
+              >
+                {uploadPreview ? (
+                  <img src={uploadPreview} alt="미리보기"
+                    style={{ width: '100%', maxHeight: 180, objectFit: 'contain', display: 'block' }} />
+                ) : (
+                  <div>
+                    <div style={{ fontSize: 28, marginBottom: 6 }}>📷</div>
+                    <div style={{ fontSize: 12, color: S.sub }}>탭하여 사진 선택</div>
+                    <div style={{ fontSize: 10, color: S.muted, marginTop: 3 }}>JPG · PNG · HEIC · WEBP</div>
+                  </div>
+                )}
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,.heic"
+                capture="environment"
+                onChange={handleFileSelect}
+                style={{ display: 'none' }}
+              />
+
+              {uploadFile && (
+                <div style={{ fontSize: 11, color: S.sub, marginTop: 6, marginBottom: 6 }}>
+                  📎 {uploadFile.name}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                {uploadPreview && (
+                  <button onClick={() => { setUploadFile(null); setUploadPreview(null); setUploadResult(null); if (fileInputRef.current) fileInputRef.current.value = ''; }} style={{
+                    padding: '9px 14px', background: S.surface2, color: S.sub,
+                    border: S.border, borderRadius: 8, fontSize: 12, cursor: 'pointer'
+                  }}>취소</button>
+                )}
+                <button
+                  onClick={handleReceiptUpload}
+                  disabled={!uploadFile || uploadLoading}
+                  style={{
+                    flex: 1, padding: '10px 0',
+                    background: uploadFile ? S.accent : S.muted,
+                    color: '#fff', border: 'none', borderRadius: 8,
+                    fontWeight: 700, fontSize: 13, cursor: uploadFile ? 'pointer' : 'default',
+                    opacity: uploadLoading ? 0.6 : 1,
+                    fontFamily: "'Noto Sans KR',sans-serif"
+                  }}
+                >
+                  {uploadLoading ? '업로드 중...' : '업로드'}
+                </button>
+              </div>
+
+              {/* OCR 결과 */}
+              {uploadResult?.ok && uploadResult.data && (
+                <div style={{ marginTop: 10, background: S.surface2, borderRadius: 8, padding: 10 }}>
+                  <div style={{ fontSize: 11, color: S.green, fontWeight: 700, marginBottom: 6 }}>✅ AI 분석 완료</div>
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                    {uploadResult.data.ocr_date    && <Badge color={S.sub}>{uploadResult.data.ocr_date}</Badge>}
+                    {uploadResult.data.ocr_amount  && <Badge color={S.green}>{uploadResult.data.ocr_amount.toLocaleString()}원</Badge>}
+                    {uploadResult.data.ocr_vendor  && <Badge color={S.accent}>{uploadResult.data.ocr_vendor}</Badge>}
+                    {uploadResult.data.category_suggestion && <Badge color="#7c3aed">{uploadResult.data.category_suggestion}</Badge>}
+                    {uploadResult.data.ocr_receipt_type && <Badge color={S.muted}>{uploadResult.data.ocr_receipt_type}</Badge>}
+                  </div>
+                </div>
+              )}
+              {uploadResult?.ok && !uploadResult.data?.ocr_date && (
+                <div style={{ marginTop: 8, fontSize: 11, color: S.sub }}>저장 완료 (OCR 분석 없음)</div>
+              )}
+            </Card>
+
+            {/* 최근 업로드 영수증 */}
+            {recentReceipts.length > 0 && (
+              <Card>
+                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: S.sub }}>최근 업로드 영수증</div>
+                {recentReceipts.map(r => (
+                  <div key={r.id} style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '8px 0', borderBottom: `1px solid ${S.surface2}`
+                  }}>
+                    {r.image_url ? (
+                      <img
+                        src={r.gcs_url || r.image_url}
+                        alt="영수증"
+                        style={{ width: 44, height: 44, objectFit: 'cover', borderRadius: 6, flexShrink: 0, background: S.surface2 }}
+                        onError={e => { e.target.style.display = 'none'; }}
+                      />
+                    ) : (
+                      <div style={{ width: 44, height: 44, borderRadius: 6, background: S.surface2, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                        <span style={{ fontSize: 18 }}>🧾</span>
+                      </div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {r.ocr_vendor || '업체 미인식'}
+                        {r.ocr_amount ? <span style={{ color: S.green, marginLeft: 6 }}>{r.ocr_amount.toLocaleString()}원</span> : null}
+                      </div>
+                      <div style={{ fontSize: 10, color: S.muted }}>
+                        {r.ocr_date || ''} · {r.uploader_name || '알수없음'}
+                        {r.gcs_url && <span style={{ color: '#10b981', marginLeft: 4 }}>☁ 백업완료</span>}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </Card>
+            )}
 
             {/* 후원회 */}
             {isAccountant && (
