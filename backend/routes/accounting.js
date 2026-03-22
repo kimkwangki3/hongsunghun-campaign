@@ -575,6 +575,35 @@ router.post('/test/seed-receipt', requireAdmin, async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+// ── 구글 시트 연결 진단 (admin) ────────────────────────
+router.get('/sheets/diagnose', requireAdmin, async (req, res) => {
+  const result = { env: {}, auth: null, spreadsheet: null, error: null };
+  try {
+    result.env.GOOGLE_SHEET_ID    = process.env.GOOGLE_SHEET_ID    ? '✅ 설정됨 (' + process.env.GOOGLE_SHEET_ID + ')' : '❌ 미설정';
+    result.env.FIREBASE_CLIENT_EMAIL = process.env.FIREBASE_CLIENT_EMAIL ? '✅ ' + process.env.FIREBASE_CLIENT_EMAIL : '❌ 미설정';
+    result.env.FIREBASE_PRIVATE_KEY  = process.env.FIREBASE_PRIVATE_KEY  ? '✅ 설정됨 (길이:' + process.env.FIREBASE_PRIVATE_KEY.length + ')' : '❌ 미설정';
+
+    const { google } = require('googleapis');
+    const auth = new google.auth.JWT(
+      process.env.FIREBASE_CLIENT_EMAIL,
+      null,
+      process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+      ['https://www.googleapis.com/auth/spreadsheets']
+    );
+    const token = await auth.getAccessToken();
+    result.auth = token.token ? '✅ 인증 토큰 획득 성공' : '❌ 토큰 없음';
+
+    const sheets = google.sheets({ version: 'v4', auth });
+    const meta = await sheets.spreadsheets.get({ spreadsheetId: process.env.GOOGLE_SHEET_ID });
+    result.spreadsheet = '✅ 스프레드시트 접근 성공: ' + meta.data.properties.title;
+    result.sheets = meta.data.sheets.map(s => s.properties.title);
+  } catch (e) {
+    result.error = e.message;
+    result.errorDetail = e.response?.data || null;
+  }
+  res.json({ success: true, data: result });
+});
+
 // ── 시트 URL 반환 ──────────────────────────────────────
 router.get('/sheets/url', requireAccountant, (req, res) => {
   const id = process.env.GOOGLE_SHEET_ID;
