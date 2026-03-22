@@ -900,7 +900,7 @@ export default function AccountingPage() {
                     ))}
                   </select>
                 </FormRow>
-                <FormRow label="금액"><input type="number" placeholder="원" value={form.amount||''} onChange={e => setForm(f => ({...f,amount:parseInt(e.target.value)||0}))} style={inputStyle} /></FormRow>
+                <FormRow label="금액"><AmountInput value={form.amount} onChange={e => setForm(f => ({...f,amount:parseInt(e.target.value)||0}))} /></FormRow>
                 <FormRow label="내용"><input type="text" placeholder="거래처/설명" value={form.description||''} onChange={e => setForm(f => ({...f,description:e.target.value}))} style={inputStyle} /></FormRow>
                 <FormRow label="비고"><input type="text" value={form.note||''} onChange={e => setForm(f => ({...f,note:e.target.value}))} style={inputStyle} /></FormRow>
                 {/* 연결된 영수증 or 새 첨부 */}
@@ -933,7 +933,7 @@ export default function AccountingPage() {
             {modal === 'sponsor_income' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <FormRow label="날짜"><input type="date" value={form.date||''} onChange={e => setForm(f => ({...f,date:e.target.value}))} style={inputStyle} /></FormRow>
-                <FormRow label="금액"><input type="number" placeholder="원" value={form.amount||''} onChange={e => setForm(f => ({...f,amount:parseInt(e.target.value)||0}))} style={inputStyle} /></FormRow>
+                <FormRow label="금액"><AmountInput value={form.amount} onChange={e => setForm(f => ({...f,amount:parseInt(e.target.value)||0}))} /></FormRow>
                 <FormRow label="기부자명"><input type="text" value={form.donor_name||''} onChange={e => setForm(f => ({...f,donor_name:e.target.value}))} style={inputStyle} /></FormRow>
                 <FormRow label="연락처"><input type="text" value={form.donor_phone||''} onChange={e => setForm(f => ({...f,donor_phone:e.target.value}))} style={inputStyle} /></FormRow>
                 <FormRow label="비고"><input type="text" value={form.note||''} onChange={e => setForm(f => ({...f,note:e.target.value}))} style={inputStyle} /></FormRow>
@@ -952,7 +952,7 @@ export default function AccountingPage() {
                     ))}
                   </select>
                 </FormRow>
-                <FormRow label="금액"><input type="number" placeholder="원" value={form.amount||''} onChange={e => setForm(f => ({...f,amount:parseInt(e.target.value)||0}))} style={inputStyle} /></FormRow>
+                <FormRow label="금액"><AmountInput value={form.amount} onChange={e => setForm(f => ({...f,amount:parseInt(e.target.value)||0}))} /></FormRow>
                 <FormRow label="비고"><input type="text" value={form.note||''} onChange={e => setForm(f => ({...f,note:e.target.value}))} style={inputStyle} /></FormRow>
                 <ReceiptAttach
                   preview={modalReceiptPreview}
@@ -977,7 +977,7 @@ export default function AccountingPage() {
                   </select>
                 </FormRow>
                 <FormRow label="성명"><input type="text" value={form.staff_name||''} onChange={e => setForm(f => ({...f,staff_name:e.target.value}))} style={inputStyle} /></FormRow>
-                <FormRow label="수당"><input type="number" placeholder="원" value={form.allowance||''} onChange={e => setForm(f => ({...f,allowance:parseInt(e.target.value)||0}))} style={inputStyle} /></FormRow>
+                <FormRow label="수당"><AmountInput value={form.allowance} onChange={e => setForm(f => ({...f,allowance:parseInt(e.target.value)||0}))} /></FormRow>
                 <FormRow label="식사제공"><input type="number" min="0" max="3" placeholder="0~3회" value={form.meal_provided||0} onChange={e => setForm(f => ({...f,meal_provided:parseInt(e.target.value)||0}))} style={inputStyle} /></FormRow>
                 <FormRow label="교통공제"><input type="number" placeholder="원" value={form.transport_deduction||0} onChange={e => setForm(f => ({...f,transport_deduction:parseInt(e.target.value)||0}))} style={inputStyle} /></FormRow>
                 <div style={{ fontSize: 11, color: S.sub, background: S.surface2, borderRadius: 8, padding: 10 }}>
@@ -1164,6 +1164,54 @@ function FormRow({ label, children }) {
     <div>
       <div style={{ fontSize: 11, color: '#8896b3', marginBottom: 4 }}>{label}</div>
       {children}
+    </div>
+  );
+}
+
+function toKorean(n) {
+  if (!n || isNaN(n) || parseInt(n) === 0) return '';
+  const num = parseInt(n);
+  const d = ['', '일', '이', '삼', '사', '오', '육', '칠', '팔', '구'];
+  const p = ['', '십', '백', '천'];
+  function group(x) {
+    if (x === 0) return '';
+    let r = '';
+    [Math.floor(x/1000)%10, Math.floor(x/100)%10, Math.floor(x/10)%10, x%10].forEach((v, i) => {
+      if (v === 0) return;
+      r += (v === 1 && i > 0 ? '' : d[v]) + p[3 - i];
+    });
+    return r;
+  }
+  const jo = Math.floor(num / 1e12);
+  const eok = Math.floor((num % 1e12) / 1e8);
+  const man = Math.floor((num % 1e8) / 1e4);
+  const rest = num % 1e4;
+  let r = '';
+  if (jo)   r += group(jo) + '조 ';
+  if (eok)  r += group(eok) + '억 ';
+  if (man)  r += group(man) + '만 ';
+  if (rest) r += group(rest);
+  return r.trim() + '원';
+}
+
+function AmountInput({ value, onChange }) {
+  return (
+    <div>
+      <div style={{ position: 'relative' }}>
+        <input
+          type="number"
+          placeholder="0"
+          value={value || ''}
+          onChange={onChange}
+          style={{ ...{ width:'100%', background:'#1a2236', border:'1px solid #1e2d45', borderRadius:8, padding:'9px 12px', color:'#e8edf5', fontSize:15, fontFamily:"'Noto Sans KR',sans-serif", outline:'none', boxSizing:'border-box', fontWeight:700 } }}
+        />
+      </div>
+      {value > 0 && (
+        <div style={{ marginTop: 5, display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 13, color: '#10b981', fontWeight: 700 }}>{Number(value).toLocaleString()}원</span>
+          <span style={{ fontSize: 11, color: '#8896b3' }}>({toKorean(value)})</span>
+        </div>
+      )}
     </div>
   );
 }
