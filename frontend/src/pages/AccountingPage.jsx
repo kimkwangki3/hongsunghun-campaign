@@ -98,6 +98,25 @@ export default function AccountingPage() {
     } finally { setSyncLoading(false); }
   }
 
+  async function handleSheetsDiagnose() {
+    try {
+      const r = await api.get('/accounting/sheets/diagnose');
+      const d = r.data.data;
+      const msg = [
+        d.env.GOOGLE_SHEET_ID,
+        d.env.FIREBASE_CLIENT_EMAIL,
+        d.env.FIREBASE_PRIVATE_KEY,
+        d.auth || '',
+        d.spreadsheet || '',
+        d.error ? '❌ 오류: ' + d.error : '',
+        d.sheets ? '탭목록: ' + d.sheets.join(', ') : '',
+      ].filter(Boolean).join('\n');
+      alert('📊 구글 시트 진단 결과\n\n' + msg);
+    } catch (e) {
+      alert('진단 실패: ' + (e.response?.data?.message || e.message));
+    }
+  }
+
   const loadSummary = useCallback(async () => {
     try { const r = await api.get('/accounting/summary'); setSummary(r.data.data); } catch {}
   }, []);
@@ -315,6 +334,12 @@ export default function AccountingPage() {
                 padding:'7px 12px', fontSize:11, fontWeight:700, cursor:'pointer',
                 textDecoration:'none', display:'flex', alignItems:'center', gap:4
               }}>📊 시트</a>
+            )}
+            {user?.role === 'admin' && (
+              <button onClick={handleSheetsDiagnose} style={{
+                background:'#1a1a2e', color:'#8896b3', border:'1px solid #1e2d45',
+                borderRadius:8, padding:'7px 10px', fontSize:11, cursor:'pointer'
+              }}>🔍 진단</button>
             )}
             {isAccountant && (
               <button onClick={handleSheetsSync} disabled={syncLoading} style={{
