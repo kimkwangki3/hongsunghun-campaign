@@ -228,6 +228,27 @@ async function initDB() {
       created_at          TIMESTAMP DEFAULT NOW()
     )
   `);
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS acct_assets (
+      id               SERIAL PRIMARY KEY,
+      asset_no         VARCHAR(20) UNIQUE NOT NULL,
+      name             TEXT NOT NULL,
+      quantity         INTEGER DEFAULT 1,
+      unit_price       INTEGER NOT NULL,
+      total_amount     INTEGER NOT NULL,
+      purchase_date    DATE NOT NULL,
+      vendor           TEXT,
+      location         TEXT DEFAULT '선거사무소 본소',
+      transaction_id   INTEGER REFERENCES acct_transactions(id),
+      receipt_id       INTEGER REFERENCES acct_receipts(id),
+      status           VARCHAR(20) DEFAULT '사용중',
+      accounted        BOOLEAN DEFAULT FALSE,
+      note             TEXT,
+      created_by       TEXT REFERENCES users(id),
+      created_at       TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_acct_assets_no ON acct_assets(asset_no)`);
   // ─────────────────────────────────────────────────────────────────────
 
   // 성능 인덱스 (없으면 생성)

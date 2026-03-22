@@ -10,6 +10,8 @@ const SHEET_HEADERS = {
   '후원회지출':     ['번호','지출일','지출과목','내용','금액(원)','영수증번호','비고'],
   '수당실비명세':   ['번호','지급일','직책','성명','계좌번호','수당(원)','일비(원)','식비(원)','교통공제(원)','지급합계(원)','영수증번호','승인여부','비고'],
   '영수증목록':     ['번호','업로드일','영수증날짜','업체명','사업자번호','영수증종류','금액(원)','과목','업로더','GCS백업URL'],
+  '비품관리':       ['관리번호','품목명','수량','단가(원)','합계(원)','구매일','구매처','비치장소','거래번호','영수증번호','상태','회계등록여부','비고','등록자'],
+  '선거물품목록':   ['번호','품목명','규격/수량','단위','사용처','보관장소','취득일','취득방법','비고1','비고2'],
 };
 
 const ROLE_MAP = { manager:'선거사무장', branch_manager:'선거연락소장', accountant:'회계책임자', worker:'선거사무원' };
@@ -205,9 +207,27 @@ async function syncAll(db) {
     }});
   }
 
+  // ─ 비품관리 ──────────────────────────────────────
+  const assetRows = await db.all(
+    `SELECT a.*, u.name AS created_by_name FROM acct_assets a
+     LEFT JOIN users u ON a.created_by = u.id ORDER BY a.asset_no, a.id`
+  );
+  if (assetRows.length > 0) {
+    await client.spreadsheets.values.update({ spreadsheetId, range: '비품관리!A2', valueInputOption: 'USER_ENTERED', requestBody: {
+      values: assetRows.map(r => [
+        r.asset_no, r.name, r.quantity, r.unit_price, r.total_amount,
+        r.purchase_date, r.vendor||'', r.location||'',
+        r.transaction_id||'', r.receipt_id||'',
+        r.status||'사용중', r.accounted ? '✅완료' : '❌미등록',
+        r.note||'', r.created_by_name||''
+      ])
+    }});
+  }
+
   return {
     tx: txRows.length, receipts: recRows.length,
     staff: staffRows.length, sponsor: spInc.length + spExp.length,
+    assets: assetRows.length,
     spreadsheetId,
     url: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
   };

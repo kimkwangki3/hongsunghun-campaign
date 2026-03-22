@@ -44,8 +44,24 @@ function GaugeBar({ pct, color = S.accent, warn = 80, danger = 95 }) {
   );
 }
 
-const TABS = ['대시보드', '수입/지출', '미처리영수증', 'SMS', '후원회', '수당', '영수증'];
+const TABS = ['대시보드', '수입/지출', '미처리영수증', 'SMS', '후원회', '수당', '영수증', '비품관리'];
 const ACCT_TABS = ['대시보드', '수입/지출']; // 일반 사용자용
+
+// ── 선관위 양식 과목 체계 ──────────────────────────────
+const INCOME_ACCOUNT_TYPES = ['자기부담금', '차입금', '정당지원금', '기탁금반환금', '기타수입'];
+const EXPENSE_CATEGORIES = {
+  '선전비':           ['인쇄물제작비(홍보물)', '현수막·포스터제작비', '신문광고비', '방송광고비', '인터넷·SNS광고비', '선거공보제작비'],
+  '사무소설치유지비':  ['사무소임차료', '집기·비품비', '수도광열비', '사무용품비', '기타사무소비'],
+  '인건비·수당':      ['선거사무원수당', '선거사무장수당', '선거연락소장수당', '회계책임자수당'],
+  '실비':             ['일비', '식비', '교통비'],
+  '통신비':           ['전화·인터넷비', '우편비'],
+  '차량비':           ['차량유류비', '차량임차료', '차량수리비'],
+  '집회비':           ['다과·음료비', '행사진행비'],
+  '기탁금':           ['선관위기탁금'],
+  '비선거비용':       ['정치활동비', '기타비선거비용'],
+};
+const ALL_EXPENSE_CATS = Object.values(EXPENSE_CATEGORIES).flat();
+const ASSET_LOCATIONS = ['선거사무소 본소', '선거연락소 1', '선거연락소 2', '선거연락소 3', '기타'];
 
 export default function AccountingPage() {
   const user = useAuthStore(s => s.user);
@@ -83,6 +99,8 @@ export default function AccountingPage() {
   const [modalReceiptUrl, setModalReceiptUrl] = useState(null);
   const [pendingReceipts, setPendingReceipts] = useState([]);
   const [uploadNote, setUploadNote] = useState('');
+  const [assets, setAssets] = useState([]);
+  const [stickerTarget, setStickerTarget] = useState(null); // 스티커 인쇄 대상
   const [allReceipts, setAllReceipts] = useState([]);
 
   const toast = (m) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
@@ -149,6 +167,13 @@ export default function AccountingPage() {
     } catch {}
   }, [isAccountant]);
 
+  const loadAssets = useCallback(async () => {
+    try {
+      const r = await api.get('/accounting/assets');
+      setAssets(r.data.data || []);
+    } catch {}
+  }, []);
+
   useEffect(() => { loadSummary(); loadRecentReceipts(); loadPendingReceipts(); }, [loadSummary, loadRecentReceipts, loadPendingReceipts]);
   // 30초마다 미처리 영수증 카운트 갱신 (배지 실시간 반영)
   useEffect(() => {
@@ -173,7 +198,8 @@ export default function AccountingPage() {
     }
     if (tab === 5 && isAccountant) api.get('/accounting/staff').then(r => setStaff(r.data.data || [])).catch(() => {});
     if (tab === 6 && isAccountant) api.get('/accounting/receipts/list').then(r => setAllReceipts(r.data.data || [])).catch(() => {});
-  }, [tab, isAccountant, loadSummary, loadTransactions, loadPendingReceipts]);
+    if (tab === 7) loadAssets();
+  }, [tab, isAccountant, loadSummary, loadTransactions, loadPendingReceipts, loadAssets]);
 
   async function handleSmsParse() {
     const lines = smsInput.split('\n').filter(l => l.trim());
@@ -193,7 +219,8 @@ export default function AccountingPage() {
         date: sms.date || new Date().toISOString().split('T')[0],
         amount: sms.amount, type: sms.type === 'income' ? 'income' : 'expense',
         cost_type: sms.cost_type || 'election_cost',
-        category: sms.category, reimbursable: sms.reimbursable ?? true,
+        category: sms.category,
+        reimbursable: (sms.date && sms.date < '2026-05-14') ? false : (sms.reimbursable ?? true),
         description: sms.counterpart || sms.raw_text.substring(0, 40),
       });
       setSmsList(prev => prev.filter(s => s.id !== sms.id));
@@ -738,7 +765,7 @@ export default function AccountingPage() {
                           amount: r.ocr_amount || '',
                           description: r.note || r.ocr_vendor || '',
                           receipt_id: r.id,
-                          reimbursable: r.reimbursable_guess ?? true,
+                          reimbursable: (r.ocr_date && r.ocr_date < '2026-05-14') ? false : (r.reimbursable_guess ?? true),
                         });
                       }}
                       style={{
@@ -908,6 +935,12 @@ export default function AccountingPage() {
             {modal === 'tx' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                 <FormRow label="날짜"><input type="date" value={form.date||''} onChange={e => setForm(f => ({...f,date:e.target.value}))} style={inputStyle} /></FormRow>
+                {/* 예비후보자 기간 경고 */}
+                {form.date && form.date < '2026-05-14' && (
+                  <div style={{ background: '#3a1f00', border: '1px solid #ff8c00', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#ffa502' }}>
+                    ⚠️ <strong>예비후보자 기간</strong> (2026-05-14 이전)은 선거비용 보전 대상이 아닙니다.
+                  </div>
+                )}
                 <FormRow label="구분">
                   <select value={form.type||'expense'} onChange={e => setForm(f => ({...f,type:e.target.value}))} style={inputStyle}>
                     <option value="expense">지출</option>
@@ -916,16 +949,32 @@ export default function AccountingPage() {
                 </FormRow>
                 <FormRow label="비용구분">
                   <select value={form.cost_type||''} onChange={e => setForm(f => ({...f,cost_type:e.target.value}))} style={inputStyle}>
-                    <option value="election_cost">선거비용 (보전 가능)</option>
+                    <option value="election_cost">
+                      {form.date && form.date < '2026-05-14' ? '선거비용 (예비후보자 기간 — 보전 불가)' : '선거비용 (보전 가능)'}
+                    </option>
                     <option value="non_election_cost">비선거비용</option>
                   </select>
                 </FormRow>
+                {/* 수입 자금원천 (수입일 때만) */}
+                {form.type === 'income' && (
+                  <FormRow label="자금원천">
+                    <select value={form.account_type||''} onChange={e => setForm(f => ({...f,account_type:e.target.value}))} style={inputStyle}>
+                      <option value="">선택</option>
+                      {INCOME_ACCOUNT_TYPES.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </FormRow>
+                )}
                 <FormRow label="과목">
                   <select value={form.category||''} onChange={e => setForm(f => ({...f,category:e.target.value}))} style={inputStyle}>
                     <option value="">선택</option>
-                    {['홍보물제작비','광고비','식비','다과음료비','차량운행비','통신비','선거사무관계자수당','사무용품비','사무소임차료','사무소유지비','기탁금','기타'].map(c => (
-                      <option key={c} value={c}>{c}</option>
-                    ))}
+                    {form.type === 'income'
+                      ? INCOME_ACCOUNT_TYPES.map(c => <option key={c} value={c}>{c}</option>)
+                      : Object.entries(EXPENSE_CATEGORIES).map(([group, cats]) => (
+                          <optgroup key={group} label={group}>
+                            {cats.map(c => <option key={c} value={c}>{c}</option>)}
+                          </optgroup>
+                        ))
+                    }
                   </select>
                 </FormRow>
                 <FormRow label="금액"><AmountInput value={form.amount} onChange={e => setForm(f => ({...f,amount:parseInt(e.target.value)||0}))} /></FormRow>
@@ -1025,6 +1074,212 @@ export default function AccountingPage() {
                 border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer',
                 opacity: loading ? 0.5 : 1
               }}>등록</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 비품관리 탭 ── */}
+      {tab === 7 && (
+        <div>
+          {/* 통계 요약 */}
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            <div style={{ flex: 1, background: S.surface, border: S.border, borderRadius: 10, padding: '10px 14px', textAlign: 'center' }}>
+              <div style={{ fontSize: 20, fontWeight: 900, color: S.accent }}>{assets.length}</div>
+              <div style={{ fontSize: 10, color: S.sub, marginTop: 2 }}>전체 비품</div>
+            </div>
+            <div style={{ flex: 1, background: S.surface, border: S.border, borderRadius: 10, padding: '10px 14px', textAlign: 'center' }}>
+              <div style={{ fontSize: 20, fontWeight: 900, color: S.green }}>{assets.filter(a => a.accounted).length}</div>
+              <div style={{ fontSize: 10, color: S.sub, marginTop: 2 }}>회계등록 완료</div>
+            </div>
+            <div style={{ flex: 1, background: S.surface, border: S.border, borderRadius: 10, padding: '10px 14px', textAlign: 'center' }}>
+              <div style={{ fontSize: 20, fontWeight: 900, color: S.red }}>{assets.filter(a => !a.accounted).length}</div>
+              <div style={{ fontSize: 10, color: S.sub, marginTop: 2 }}>미등록</div>
+            </div>
+            <div style={{ flex: 1, background: S.surface, border: S.border, borderRadius: 10, padding: '10px 14px', textAlign: 'center' }}>
+              <div style={{ fontSize: 14, fontWeight: 900, color: S.yellow }}>
+                {assets.reduce((s, a) => s + (a.total_amount||0), 0).toLocaleString()}
+              </div>
+              <div style={{ fontSize: 10, color: S.sub, marginTop: 2 }}>합계(원)</div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+            {isAccountant && (
+              <button onClick={() => { setModal('asset'); setForm({ purchase_date: today, quantity: 1, status: '사용중', location: '선거사무소 본소' }); }} style={{
+                flex: 1, padding: '10px 0', background: S.accent, color: '#fff',
+                border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer'
+              }}>+ 비품 등록</button>
+            )}
+            {assets.length > 0 && (
+              <button onClick={() => setStickerTarget('all')} style={{
+                padding: '10px 16px', background: '#7c3aed', color: '#fff',
+                border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer'
+              }}>🏷️ 전체 스티커 인쇄</button>
+            )}
+          </div>
+
+          {/* 비품 목록 */}
+          {assets.length === 0 ? (
+            <div style={{ textAlign: 'center', color: S.sub, padding: '40px 0', fontSize: 13 }}>등록된 비품이 없습니다.</div>
+          ) : (
+            assets.map(a => (
+              <Card key={a.id} style={{ marginBottom: 8 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap', marginBottom: 4 }}>
+                      <span style={{ fontSize: 11, fontWeight: 900, color: '#7c3aed', background: '#7c3aed22', border: '1px solid #7c3aed44', borderRadius: 5, padding: '1px 7px' }}>{a.asset_no}</span>
+                      <span style={{ fontSize: 13, fontWeight: 700 }}>{a.name}</span>
+                      <Badge color={a.accounted ? S.green : S.red}>{a.accounted ? '✅ 회계등록완료' : '❌ 미등록'}</Badge>
+                    </div>
+                    <div style={{ fontSize: 11, color: S.sub }}>
+                      수량 {a.quantity}개 · {a.unit_price?.toLocaleString()}원 · 합계 <strong style={{ color: S.text }}>{a.total_amount?.toLocaleString()}원</strong>
+                    </div>
+                    <div style={{ fontSize: 11, color: S.sub, marginTop: 2 }}>
+                      {a.purchase_date} · {a.vendor||'-'} · {a.location}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 4, marginLeft: 8, flexShrink: 0 }}>
+                    <button onClick={() => setStickerTarget(a)} style={{
+                      padding: '5px 10px', background: '#7c3aed', color: '#fff',
+                      border: 'none', borderRadius: 6, fontSize: 11, cursor: 'pointer', fontWeight: 700
+                    }}>🏷️ 스티커</button>
+                    {isAccountant && (
+                      <>
+                        <button onClick={async () => {
+                          await api.patch(`/accounting/assets/${a.id}/accounted`, { accounted: !a.accounted });
+                          loadAssets();
+                          toast(a.accounted ? '❌ 미등록으로 변경' : '✅ 회계등록 완료 처리');
+                        }} style={{
+                          padding: '5px 10px', background: a.accounted ? S.surface2 : S.green, color: '#fff',
+                          border: 'none', borderRadius: 6, fontSize: 11, cursor: 'pointer'
+                        }}>{a.accounted ? '취소' : '등록완료'}</button>
+                        <button onClick={async () => {
+                          if (!window.confirm(`"${a.name}" 삭제하시겠습니까?`)) return;
+                          await api.delete(`/accounting/assets/${a.id}`);
+                          loadAssets(); toast('🗑️ 삭제됨');
+                        }} style={{
+                          padding: '5px 10px', background: S.surface2, color: S.sub,
+                          border: S.border, borderRadius: 6, fontSize: 11, cursor: 'pointer'
+                        }}>삭제</button>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </Card>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* ── 비품 등록 모달 ── */}
+      {modal === 'asset' && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'flex-end', zIndex: 1000 }}
+          onClick={e => e.target === e.currentTarget && setModal(null)}>
+          <div style={{ background: S.surface, borderRadius: '16px 16px 0 0', padding: 20, width: '100%', maxWidth: 600, margin: '0 auto', maxHeight: '80vh', overflowY: 'auto' }}>
+            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 16 }}>비품 등록</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <FormRow label="품목명"><input type="text" placeholder="예: 접이식 테이블" value={form.name||''} onChange={e => setForm(f => ({...f,name:e.target.value}))} style={inputStyle} /></FormRow>
+              <FormRow label="구매일"><input type="date" value={form.purchase_date||''} onChange={e => setForm(f => ({...f,purchase_date:e.target.value}))} style={inputStyle} /></FormRow>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <div style={{ flex: 1 }}><FormRow label="수량"><input type="number" min="1" value={form.quantity||1} onChange={e => setForm(f => ({...f,quantity:parseInt(e.target.value)||1}))} style={inputStyle} /></FormRow></div>
+                <div style={{ flex: 2 }}><FormRow label="단가(원)"><AmountInput value={form.unit_price} onChange={e => setForm(f => ({...f,unit_price:parseInt(e.target.value)||0}))} /></FormRow></div>
+              </div>
+              {form.quantity > 0 && form.unit_price > 0 && (
+                <div style={{ background: S.surface2, borderRadius: 8, padding: '8px 12px', fontSize: 12, color: S.sub }}>
+                  합계: <strong style={{ color: S.text }}>{((form.quantity||1) * (form.unit_price||0)).toLocaleString()}원</strong>
+                </div>
+              )}
+              <FormRow label="구매처"><input type="text" placeholder="구매처/업체명" value={form.vendor||''} onChange={e => setForm(f => ({...f,vendor:e.target.value}))} style={inputStyle} /></FormRow>
+              <FormRow label="비치장소">
+                <select value={form.location||'선거사무소 본소'} onChange={e => setForm(f => ({...f,location:e.target.value}))} style={inputStyle}>
+                  {ASSET_LOCATIONS.map(l => <option key={l} value={l}>{l}</option>)}
+                </select>
+              </FormRow>
+              <FormRow label="상태">
+                <select value={form.status||'사용중'} onChange={e => setForm(f => ({...f,status:e.target.value}))} style={inputStyle}>
+                  <option value="사용중">사용중</option>
+                  <option value="반납예정">반납예정</option>
+                  <option value="반납완료">반납완료</option>
+                </select>
+              </FormRow>
+              <FormRow label="비고"><input type="text" value={form.note||''} onChange={e => setForm(f => ({...f,note:e.target.value}))} style={inputStyle} /></FormRow>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                <input type="checkbox" id="assetAccounted" checked={!!form.accounted} onChange={e => setForm(f => ({...f,accounted:e.target.checked}))} />
+                <label htmlFor="assetAccounted" style={{ fontSize: 13, color: S.text, cursor: 'pointer' }}>회계등록 완료 (거래 연결됨)</label>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <button onClick={() => { setModal(null); setForm({}); }} style={{ flex: 1, padding: '11px 0', background: S.surface2, color: S.sub, border: S.border, borderRadius: 10, fontSize: 13, cursor: 'pointer' }}>취소</button>
+              <button disabled={loading} onClick={async () => {
+                if (!form.name || !form.purchase_date || !form.unit_price) { toast('❌ 품목명·구매일·단가 필수'); return; }
+                setLoading(true);
+                try {
+                  await api.post('/accounting/assets', form);
+                  toast('✅ 비품 등록 완료');
+                  setModal(null); setForm({});
+                  loadAssets();
+                } catch (e) { toast('❌ ' + (e.response?.data?.message || '등록 실패')); }
+                finally { setLoading(false); }
+              }} style={{ flex: 2, padding: '11px 0', background: S.accent, color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: loading ? 0.5 : 1 }}>등록</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 스티커 인쇄 모달 ── */}
+      {stickerTarget && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
+          <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 500, color: '#111', maxHeight: '90vh', overflowY: 'auto' }}>
+            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16, color: '#111' }}>
+              🏷️ 스티커 미리보기 {stickerTarget === 'all' ? `(전체 ${assets.length}개)` : ''}
+            </div>
+            {/* 스티커 영역 */}
+            <div id="sticker-print-area">
+              {(stickerTarget === 'all' ? assets : [stickerTarget]).map(a => (
+                <div key={a.id} style={{
+                  border: '2px solid #111', borderRadius: 8, padding: '14px 18px', marginBottom: 12,
+                  fontFamily: "'Noto Sans KR', sans-serif", pageBreakInside: 'avoid'
+                }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: '#555' }}>홍성훈 선거사무소</div>
+                    <div style={{ fontSize: 11, color: '#888' }}>제9회 지방선거</div>
+                  </div>
+                  <div style={{ borderTop: '1px solid #ccc', paddingTop: 8 }}>
+                    <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 4 }}>
+                      <span style={{ fontSize: 13, fontWeight: 900, background: '#111', color: '#fff', padding: '2px 10px', borderRadius: 4 }}>{a.asset_no}</span>
+                      <span style={{ fontSize: 16, fontWeight: 900 }}>{a.name}</span>
+                    </div>
+                    <table style={{ fontSize: 11, borderCollapse: 'collapse', width: '100%' }}>
+                      <tbody>
+                        <tr><td style={{ color: '#555', paddingRight: 12, paddingBottom: 2 }}>수 량</td><td style={{ fontWeight: 700 }}>{a.quantity}개</td><td style={{ color: '#555', paddingRight: 12, paddingLeft: 16 }}>단 가</td><td style={{ fontWeight: 700 }}>{(a.unit_price||0).toLocaleString()}원</td></tr>
+                        <tr><td style={{ color: '#555', paddingRight: 12, paddingBottom: 2 }}>합 계</td><td style={{ fontWeight: 700, color: '#d00' }}>{(a.total_amount||0).toLocaleString()}원</td><td style={{ color: '#555', paddingRight: 12, paddingLeft: 16 }}>구매일</td><td style={{ fontWeight: 700 }}>{a.purchase_date}</td></tr>
+                        <tr><td style={{ color: '#555', paddingRight: 12 }}>구매처</td><td colSpan={3} style={{ fontWeight: 700 }}>{a.vendor||'-'}</td></tr>
+                        <tr><td style={{ color: '#555', paddingRight: 12 }}>비치장소</td><td colSpan={3} style={{ fontWeight: 700 }}>{a.location}</td></tr>
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
+              <button onClick={() => setStickerTarget(null)} style={{ flex: 1, padding: '11px 0', background: '#eee', border: 'none', borderRadius: 10, fontSize: 13, cursor: 'pointer', fontWeight: 700 }}>닫기</button>
+              <button onClick={() => {
+                const printWin = window.open('', '_blank');
+                const area = document.getElementById('sticker-print-area').innerHTML;
+                printWin.document.write(`
+                  <html><head><title>비품 스티커</title>
+                  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+                  <style>
+                    body { font-family:'Noto Sans KR',sans-serif; margin: 20px; background:#fff; }
+                    @media print { @page { margin: 10mm; } body { margin: 0; } }
+                  </style></head>
+                  <body>${area}</body></html>
+                `);
+                printWin.document.close();
+                printWin.focus();
+                setTimeout(() => { printWin.print(); printWin.close(); }, 500);
+              }} style={{ flex: 2, padding: '11px 0', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, cursor: 'pointer', fontWeight: 700 }}>🖨️ 인쇄하기</button>
             </div>
           </div>
         </div>

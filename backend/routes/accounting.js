@@ -14,9 +14,14 @@ const { appendRow, setupSheets, syncAll } = require('../utils/googleSheets');
 const LIMIT = 52289440; // 순천시 제7선거구 제한액
 const SPONSOR_LIMIT = 26144720; // 후원회 모금 한도 (제한액 50%)
 
-// Google Sheets 비동기 fire-and-forget
+// Google Sheets 비동기 fire-and-forget (단일 행 추가)
 function toSheets(sheetName, values) {
   appendRow(sheetName, values).catch(e => console.error('[Sheets]', e.message));
+}
+
+// 전체 자동 동기화 (모든 쓰기 작업 후 호출)
+function autoSync() {
+  syncAll(db).catch(e => console.error('[AutoSync]', e.message));
 }
 
 // 영수증 업로드 설정
@@ -109,6 +114,8 @@ router.post('/transactions', requireAccountant, async (req, res) => {
       const lastNum = last ? parseInt(last.receipt_no.split('-')[1] || 0) : 0;
       d.receipt_no = `${prefix}-${lastNum + 1}`;
     }
+    // 예비후보자 기간(~2026-05-13)은 선거비용 보전 불가
+    if (d.date && d.date < '2026-05-14') d.reimbursable = false;
     const row = await db.get(
       `INSERT INTO acct_transactions
          (date,amount,type,description,account_type,cost_type,category,
@@ -128,18 +135,7 @@ router.post('/transactions', requireAccountant, async (req, res) => {
     }
 
     // Google Sheets 자동 동기화 (fire-and-forget)
-    toSheets('수입지출장부', [
-      '', row.date,
-      row.type === 'income' ? '수입' : '지출',
-      row.cost_type === 'election_cost' ? '선거비용' : row.cost_type === 'non_election_cost' ? '비선거비용' : '',
-      row.category||'', row.description||'', row.amount,
-      row.receipt_no||'', row.account_verified?'O':'', row.reimbursable?'O':'',
-      row.note||'', req.user.name||req.user.id,
-      new Date().toLocaleString('ko-KR'),
-    ]);
-    if (row.type === 'expense' && row.cost_type === 'election_cost') {
-      toSheets('선거비용명세', ['', row.date, row.category||'', row.description||'', row.amount, '', row.receipt_no||'', row.reimbursable?'O':'', row.note||'']);
-    }
+    autoSync();
     res.status(201).json({ success: true, data: row });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
@@ -148,6 +144,8 @@ router.post('/transactions', requireAccountant, async (req, res) => {
 router.put('/transactions/:id', requireAccountant, async (req, res) => {
   try {
     const d = req.body;
+    // 예비후보자 기간(~2026-05-13)은 선거비용 보전 불가
+    if (d.date && d.date < '2026-05-14') d.reimbursable = false;
     const row = await db.get(
       `UPDATE acct_transactions SET date=$1,amount=$2,description=$3,account_type=$4,
        cost_type=$5,category=$6,account_verified=$7,approved=$8,reimbursable=$9,note=$10,updated_at=NOW()
@@ -155,6 +153,7 @@ router.put('/transactions/:id', requireAccountant, async (req, res) => {
       [d.date,d.amount,d.description,d.account_type,d.cost_type,
        d.category,d.account_verified,d.approved,d.reimbursable,d.note,req.params.id]
     );
+    autoSync();
     res.json({ success: true, data: row });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
@@ -163,6 +162,7 @@ router.put('/transactions/:id', requireAccountant, async (req, res) => {
 router.delete('/transactions/:id', requireAccountant, async (req, res) => {
   try {
     await db.run('DELETE FROM acct_transactions WHERE id=$1', [req.params.id]);
+    autoSync();
     res.json({ success: true });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
@@ -418,6 +418,8 @@ router.post('/sms/:id/approve', requireAccountant, async (req, res) => {
     const sms = await db.get('SELECT * FROM acct_sms_raw WHERE id=$1', [req.params.id]);
     if (!sms) return res.status(404).json({ success: false, message: 'SMS 없음' });
     const d = req.body; // 사용자가 과목 등 보정 후 전송
+    // 예비후보자 기간(~2026-05-13)은 선거비용 보전 불가
+    if (d.date && d.date < '2026-05-14') d.reimbursable = false;
     const row = await db.get(
       `INSERT INTO acct_transactions
          (date,amount,type,description,cost_type,category,reimbursable,source,sms_id,created_by)
@@ -429,14 +431,7 @@ router.post('/sms/:id/approve', requireAccountant, async (req, res) => {
       `UPDATE acct_sms_raw SET status='PROCESSED', processed_at=NOW(), transaction_id=$1 WHERE id=$2`,
       [row.id, sms.id]
     );
-    toSheets('수입지출장부', [
-      '', row.date,
-      row.type === 'income' ? '수입' : '지출',
-      row.cost_type === 'election_cost' ? '선거비용' : row.cost_type === 'non_election_cost' ? '비선거비용' : '',
-      row.category||'', row.description||'', row.amount,
-      row.receipt_no||'', '', row.reimbursable?'O':'',
-      'SMS자동', req.user.name||req.user.id, new Date().toLocaleString('ko-KR'),
-    ]);
+    autoSync();
     res.json({ success: true, data: row });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
@@ -536,9 +531,88 @@ router.post('/staff', requireAccountant, async (req, res) => {
        d.allowance || 0, d.meal_provided || 0, d.transport_deduction || 0,
        total, d.receipt_no, d.approved ?? false, d.note]
     );
-    const ROLE_MAP_LOCAL = { manager:'선거사무장', branch_manager:'선거연락소장', accountant:'회계책임자', worker:'선거사무원' };
-    toSheets('수당실비명세', ['', row.payment_date, ROLE_MAP_LOCAL[row.staff_role]||row.staff_role, row.staff_name, row.staff_account||'', row.allowance, 20000, Math.max(0,25000-(row.meal_provided||0)*8330), row.transport_deduction||0, row.total_actual||0, row.receipt_no||'', row.approved?'승인':'미승인', row.note||'']);
+    autoSync();
     res.status(201).json({ success: true, data: row });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── 비품 목록 ────────────────────────────────────────
+router.get('/assets', requireAccountingView, async (req, res) => {
+  try {
+    const rows = await db.all(
+      `SELECT a.*, u.name AS created_by_name FROM acct_assets a
+       LEFT JOIN users u ON a.created_by = u.id
+       ORDER BY a.asset_no`
+    );
+    res.json({ success: true, data: rows });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── 비품 등록 ────────────────────────────────────────
+router.post('/assets', requireAccountant, async (req, res) => {
+  try {
+    const d = req.body;
+    // 관리번호 자동 채번: 비-001, 비-002...
+    const last = await db.get(`SELECT asset_no FROM acct_assets ORDER BY id DESC LIMIT 1`);
+    let nextNum = 1;
+    if (last) {
+      const m = last.asset_no.match(/(\d+)$/);
+      if (m) nextNum = parseInt(m[1]) + 1;
+    }
+    const asset_no = `비-${String(nextNum).padStart(3, '0')}`;
+    const total = (d.quantity || 1) * (d.unit_price || 0);
+    const row = await db.get(
+      `INSERT INTO acct_assets
+         (asset_no,name,quantity,unit_price,total_amount,purchase_date,vendor,
+          location,transaction_id,receipt_id,status,accounted,note,created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+      [asset_no, d.name, d.quantity||1, d.unit_price||0, total,
+       d.purchase_date, d.vendor||null, d.location||'선거사무소 본소',
+       d.transaction_id||null, d.receipt_id||null,
+       d.status||'사용중', d.accounted??false, d.note||null, req.user.id]
+    );
+    autoSync();
+    res.status(201).json({ success: true, data: row });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── 비품 수정 ────────────────────────────────────────
+router.put('/assets/:id', requireAccountant, async (req, res) => {
+  try {
+    const d = req.body;
+    const total = (d.quantity || 1) * (d.unit_price || 0);
+    const row = await db.get(
+      `UPDATE acct_assets SET name=$1,quantity=$2,unit_price=$3,total_amount=$4,
+       purchase_date=$5,vendor=$6,location=$7,transaction_id=$8,receipt_id=$9,
+       status=$10,accounted=$11,note=$12 WHERE id=$13 RETURNING *`,
+      [d.name, d.quantity||1, d.unit_price||0, total,
+       d.purchase_date, d.vendor||null, d.location||'선거사무소 본소',
+       d.transaction_id||null, d.receipt_id||null,
+       d.status||'사용중', d.accounted??false, d.note||null, req.params.id]
+    );
+    autoSync();
+    res.json({ success: true, data: row });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── 비품 회계등록 체크 토글 ──────────────────────────
+router.patch('/assets/:id/accounted', requireAccountant, async (req, res) => {
+  try {
+    const row = await db.get(
+      `UPDATE acct_assets SET accounted=$1 WHERE id=$2 RETURNING *`,
+      [req.body.accounted, req.params.id]
+    );
+    autoSync();
+    res.json({ success: true, data: row });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── 비품 삭제 ────────────────────────────────────────
+router.delete('/assets/:id', requireAccountant, async (req, res) => {
+  try {
+    await db.run('DELETE FROM acct_assets WHERE id=$1', [req.params.id]);
+    autoSync();
+    res.json({ success: true });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 

@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(//c/project/election-accounting-v2/election-accounting/src/**)",
+      "Read(//c/project/election-accounting-v2/**)"
+    ]
+  }
+}
