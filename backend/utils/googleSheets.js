@@ -49,12 +49,58 @@ async function appendRow(sheetName, values) {
   }
 }
 
+// 서비스 계정이 직접 새 스프레드시트 생성
+async function createNewSpreadsheet() {
+  const auth = getAuth();
+  if (!auth) throw new Error('Firebase 서비스 계정 미설정');
+  const drive = google.drive({ version: 'v3', auth });
+  const sheets = google.sheets({ version: 'v4', auth });
+
+  // 새 스프레드시트 생성
+  const created = await sheets.spreadsheets.create({
+    requestBody: {
+      properties: { title: '홍성훈캠프 선거회계장부' },
+      sheets: Object.keys(SHEET_HEADERS).map(title => ({ properties: { title } })),
+    }
+  });
+  const spreadsheetId = created.data.spreadsheetId;
+  const url = created.data.spreadsheetUrl;
+
+  // 기존 사용자에게 편집자 권한 공유 (선택적: 이미 공유된 이메일)
+  try {
+    await drive.permissions.create({
+      fileId: spreadsheetId,
+      requestBody: { role: 'writer', type: 'user', emailAddress: 'rlaehdgo0301@gmail.com' },
+      fields: 'id',
+    });
+  } catch (e) { console.error('공유 설정 오류:', e.message); }
+
+  console.log('✅ 새 스프레드시트 생성:', spreadsheetId, url);
+  return { spreadsheetId, url };
+}
+
 // 시트 초기 설정: 없는 시트 생성 + 헤더 행 작성 + 헤더 서식
 async function setupSheets() {
-  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
-  if (!spreadsheetId) throw new Error('GOOGLE_SHEET_ID 환경변수 미설정');
   const client = getClient();
   if (!client) throw new Error('Firebase 서비스 계정 미설정 (FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY)');
+
+  let spreadsheetId = process.env.GOOGLE_SHEET_ID;
+
+  // 기존 시트 접근 시도, 실패하면 새로 생성
+  if (spreadsheetId) {
+    try {
+      await client.spreadsheets.get({ spreadsheetId });
+    } catch (e) {
+      console.warn('기존 시트 접근 실패, 새 시트 생성:', e.message);
+      const { spreadsheetId: newId } = await createNewSpreadsheet();
+      spreadsheetId = newId;
+      console.log('🆕 새 GOOGLE_SHEET_ID:', spreadsheetId, '← Render 환경변수를 이 값으로 교체하세요');
+    }
+  } else {
+    const { spreadsheetId: newId } = await createNewSpreadsheet();
+    spreadsheetId = newId;
+    console.log('🆕 새 GOOGLE_SHEET_ID:', spreadsheetId, '← Render 환경변수에 추가하세요');
+  }
 
   const meta = await client.spreadsheets.get({ spreadsheetId });
   const existingNames = meta.data.sheets.map(s => s.properties.title);
@@ -96,17 +142,15 @@ async function setupSheets() {
     updateSheetProperties: { properties: { sheetId, gridProperties: { frozenRowCount: 1 } }, fields: 'gridProperties.frozenRowCount' },
   }));
   await client.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [...fmtRequests, ...freezeRequests] } });
-  return Object.keys(SHEET_HEADERS);
+  return { sheets: Object.keys(SHEET_HEADERS), spreadsheetId };
 }
 
 // 전체 동기화: DB → 시트 전체 덮어쓰기
 async function syncAll(db) {
-  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
-  if (!spreadsheetId) throw new Error('GOOGLE_SHEET_ID 환경변수 미설정');
   const client = getClient();
   if (!client) throw new Error('Google 서비스 계정 미설정');
 
-  await setupSheets();
+  const { spreadsheetId } = await setupSheets();
 
   // 각 시트 데이터 행 전체 삭제 (헤더 A1 유지)
   const meta = await client.spreadsheets.get({ spreadsheetId });
@@ -190,6 +234,8 @@ async function syncAll(db) {
   return {
     tx: txRows.length, receipts: recRows.length,
     staff: staffRows.length, sponsor: spInc.length + spExp.length,
+    spreadsheetId,
+    url: `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`,
   };
 }
 

@@ -556,6 +556,11 @@ router.post('/sheets/sync', requireAccountant, async (req, res) => {
   try {
     const result = await syncAll(db);
     res.json({ success: true, data: result });
+    // 새 시트가 생성된 경우 ID를 로그에 남김
+    if (result.spreadsheetId && result.spreadsheetId !== process.env.GOOGLE_SHEET_ID) {
+      console.log('🆕 새 스프레드시트 생성됨. Render 환경변수 GOOGLE_SHEET_ID를 아래 값으로 변경하세요:');
+      console.log('GOOGLE_SHEET_ID =', result.spreadsheetId);
+    }
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 

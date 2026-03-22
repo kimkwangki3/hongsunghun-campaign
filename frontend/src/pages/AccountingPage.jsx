@@ -92,6 +92,7 @@ export default function AccountingPage() {
     try {
       const r = await api.post('/accounting/sheets/sync');
       const d = r.data.data;
+      if (d.url) setSheetUrl(d.url);
       toast(`✅ 동기화 완료 — 거래 ${d.tx}건 · 영수증 ${d.receipts}건 · 수당 ${d.staff}건`);
     } catch (e) {
       toast(`❌ ${e.response?.data?.message || '동기화 실패'}`);
