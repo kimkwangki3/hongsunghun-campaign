@@ -20,7 +20,7 @@ function getAuth() {
     process.env.FIREBASE_CLIENT_EMAIL,
     null,
     process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-    ['https://www.googleapis.com/auth/spreadsheets']
+    ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
   );
 }
 
