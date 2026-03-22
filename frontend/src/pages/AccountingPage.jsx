@@ -44,7 +44,7 @@ function GaugeBar({ pct, color = S.accent, warn = 80, danger = 95 }) {
   );
 }
 
-const TABS = ['대시보드', '수입/지출', 'SMS', '후원회', '수당', '영수증'];
+const TABS = ['대시보드', '수입/지출', '미처리영수증', 'SMS', '후원회', '수당', '영수증'];
 const ACCT_TABS = ['대시보드', '수입/지출']; // 일반 사용자용
 
 export default function AccountingPage() {
@@ -128,6 +128,12 @@ export default function AccountingPage() {
   }, [isAccountant]);
 
   useEffect(() => { loadSummary(); loadRecentReceipts(); loadPendingReceipts(); }, [loadSummary, loadRecentReceipts, loadPendingReceipts]);
+  // 30초마다 미처리 영수증 카운트 갱신 (배지 실시간 반영)
+  useEffect(() => {
+    if (!isAccountant) return;
+    const timer = setInterval(() => loadPendingReceipts(), 30000);
+    return () => clearInterval(timer);
+  }, [isAccountant, loadPendingReceipts]);
   useEffect(() => {
     if (!isAccountant) return;
     api.get('/accounting/sheets/url').then(r => {
@@ -137,13 +143,14 @@ export default function AccountingPage() {
   useEffect(() => {
     if (tab === 0) { loadSummary(); loadRecentReceipts(); loadPendingReceipts(); }
     if (tab === 1) loadTransactions();
-    if (tab === 2 && isAccountant) api.get('/accounting/sms?status=PENDING').then(r => setSmsList(r.data.data || [])).catch(() => {});
-    if (tab === 3 && isAccountant) {
+    if (tab === 2 && isAccountant) loadPendingReceipts();
+    if (tab === 3 && isAccountant) api.get('/accounting/sms?status=PENDING').then(r => setSmsList(r.data.data || [])).catch(() => {});
+    if (tab === 4 && isAccountant) {
       api.get('/accounting/sponsor/income').then(r => setSponsorIncome(r.data.data || [])).catch(() => {});
       api.get('/accounting/sponsor/expense').then(r => setSponsorExpense(r.data.data || [])).catch(() => {});
     }
-    if (tab === 4 && isAccountant) api.get('/accounting/staff').then(r => setStaff(r.data.data || [])).catch(() => {});
-    if (tab === 5 && isAccountant) api.get('/accounting/receipts/list').then(r => setAllReceipts(r.data.data || [])).catch(() => {});
+    if (tab === 5 && isAccountant) api.get('/accounting/staff').then(r => setStaff(r.data.data || [])).catch(() => {});
+    if (tab === 6 && isAccountant) api.get('/accounting/receipts/list').then(r => setAllReceipts(r.data.data || [])).catch(() => {});
   }, [tab, isAccountant, loadSummary, loadTransactions, loadPendingReceipts]);
 
   async function handleSmsParse() {
@@ -327,15 +334,28 @@ export default function AccountingPage() {
 
         {/* 탭 */}
         <div style={{ display: 'flex', gap: 4, marginTop: 10, overflowX: 'auto' }}>
-          {tabs.map((t, i) => (
-            <button key={i} onClick={() => setTab(i)} style={{
-              padding: '5px 12px', fontSize: 11, fontWeight: 700, borderRadius: 20,
-              background: tab === i ? S.accent : S.surface2,
-              color: tab === i ? '#fff' : S.sub,
-              border: tab === i ? 'none' : S.border,
-              cursor: 'pointer', whiteSpace: 'nowrap'
-            }}>{t}</button>
-          ))}
+          {tabs.map((t, i) => {
+            const isPendingTab = isAccountant && t === '미처리영수증';
+            const badgeCount = isPendingTab ? pendingReceipts.length : 0;
+            return (
+              <button key={i} onClick={() => { setTab(i); if (isPendingTab) localStorage.setItem('pendingTabViewed', Date.now()); }} style={{
+                padding: '5px 12px', fontSize: 11, fontWeight: 700, borderRadius: 20,
+                background: tab === i ? S.accent : S.surface2,
+                color: tab === i ? '#fff' : S.sub,
+                border: tab === i ? 'none' : S.border,
+                cursor: 'pointer', whiteSpace: 'nowrap', position: 'relative', display: 'flex', alignItems: 'center', gap: 4
+              }}>
+                {t}
+                {badgeCount > 0 && (
+                  <span style={{
+                    background: S.red, color: '#fff', borderRadius: 10,
+                    fontSize: 9, fontWeight: 900, padding: '1px 5px', minWidth: 16, textAlign: 'center',
+                    animation: 'pulse 1.5s infinite'
+                  }}>{badgeCount}</span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -479,72 +499,20 @@ export default function AccountingPage() {
               )}
             </Card>
 
-            {/* 미처리 영수증 (회계담당/관리자) */}
+            {/* 미처리 영수증 요약 배너 (회계담당/관리자) - 클릭하면 미처리 탭으로 이동 */}
             {isAccountant && pendingReceipts.length > 0 && (
-              <Card style={{ border: '1px solid #ffa50244', background: '#1a1500' }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: S.yellow }}>
-                    🧾 미처리 영수증 ({pendingReceipts.length}건)
-                  </div>
-                  <div style={{ fontSize: 10, color: S.muted }}>탭하여 거래 등록</div>
+              <div onClick={() => setTab(2)} style={{
+                background: '#2a1500', border: '1px solid #ffa50244', borderRadius: 12,
+                padding: 14, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 12
+              }}>
+                <div style={{ background: S.yellow, color: '#000', borderRadius: '50%', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0, fontWeight: 900 }}>
+                  {pendingReceipts.length}
                 </div>
-                {pendingReceipts.map(r => (
-                  <div key={r.id} style={{
-                    display: 'flex', alignItems: 'flex-start', gap: 10,
-                    padding: '10px 0', borderBottom: `1px solid ${S.surface2}`
-                  }}>
-                    {/* 썸네일 */}
-                    <div style={{ flexShrink: 0 }}>
-                      {(r.gcs_url || r.image_url) ? (
-                        <img
-                          src={r.gcs_url || r.image_url}
-                          alt="영수증"
-                          style={{ width: 52, height: 52, objectFit: 'cover', borderRadius: 6, background: S.surface2 }}
-                          onError={e => { e.target.style.display='none'; }}
-                        />
-                      ) : (
-                        <div style={{ width: 52, height: 52, borderRadius: 6, background: S.surface2, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>🧾</div>
-                      )}
-                    </div>
-                    {/* 정보 */}
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 12, fontWeight: 700, color: S.text, marginBottom: 2 }}>
-                        {r.note || r.ocr_vendor || '설명 없음'}
-                      </div>
-                      <div style={{ fontSize: 10, color: S.sub, marginBottom: 4 }}>
-                        {r.uploader_name || '알수없음'} · {r.uploaded_at ? new Date(r.uploaded_at).toLocaleDateString('ko-KR') : ''}
-                        {r.ocr_amount ? <span style={{ color: S.green, marginLeft: 4 }}>  {r.ocr_amount.toLocaleString()}원</span> : null}
-                        {r.ocr_vendor && r.note ? <span style={{ color: S.muted, marginLeft: 4 }}>({r.ocr_vendor})</span> : null}
-                      </div>
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
-                        {r.ocr_receipt_type && <Badge color={S.muted}>{r.ocr_receipt_type}</Badge>}
-                        {r.category_suggestion && <Badge color={S.accent}>{r.category_suggestion}</Badge>}
-                      </div>
-                      <button
-                        onClick={() => {
-                          setModal('tx');
-                          setModalReceiptUrl(r.gcs_url || r.image_url || null);
-                          setForm({
-                            date: r.ocr_date || today,
-                            type: 'expense',
-                            cost_type: 'election_cost',
-                            category: r.category_suggestion || '',
-                            amount: r.ocr_amount || '',
-                            description: r.note || r.ocr_vendor || '',
-                            receipt_id: r.id,
-                            reimbursable: r.reimbursable_guess ?? true,
-                          });
-                        }}
-                        style={{
-                          padding: '5px 14px', background: S.accent, color: '#fff',
-                          border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 700,
-                          cursor: 'pointer', fontFamily: "'Noto Sans KR',sans-serif"
-                        }}
-                      >+ 거래 등록</button>
-                    </div>
-                  </div>
-                ))}
-              </Card>
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: S.yellow }}>미처리 영수증 {pendingReceipts.length}건</div>
+                  <div style={{ fontSize: 11, color: S.sub }}>탭하여 처리하기 →</div>
+                </div>
+              </div>
             )}
 
             {/* 최근 업로드 영수증 */}
@@ -670,8 +638,82 @@ export default function AccountingPage() {
           </div>
         )}
 
-        {/* ── SMS 파싱 (회계담당+관리자) ── */}
+        {/* ── 미처리 영수증 탭 (회계담당+관리자) ── */}
         {tab === 2 && isAccountant && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+              <div style={{ fontSize: 14, fontWeight: 700 }}>🧾 미처리 영수증</div>
+              <button onClick={loadPendingReceipts} style={{
+                background: S.surface2, color: S.sub, border: S.border,
+                borderRadius: 8, padding: '5px 12px', fontSize: 11, cursor: 'pointer'
+              }}>새로고침</button>
+            </div>
+
+            {pendingReceipts.length === 0 ? (
+              <div style={{ textAlign: 'center', color: S.muted, padding: 60, fontSize: 13 }}>
+                <div style={{ fontSize: 36, marginBottom: 10 }}>✅</div>
+                미처리 영수증이 없습니다
+              </div>
+            ) : pendingReceipts.map(r => (
+              <Card key={r.id} style={{ border: '1px solid #ffa50233' }}>
+                <div style={{ display: 'flex', alignItems: 'flex-start', gap: 12 }}>
+                  {/* 썸네일 */}
+                  {(r.gcs_url || r.image_url) ? (
+                    <img
+                      src={r.gcs_url || r.image_url}
+                      alt="영수증"
+                      style={{ width: 70, height: 70, objectFit: 'cover', borderRadius: 8, background: S.surface2, flexShrink: 0 }}
+                      onError={e => { e.target.style.display='none'; }}
+                    />
+                  ) : (
+                    <div style={{ width: 70, height: 70, borderRadius: 8, background: S.surface2, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 28, flexShrink: 0 }}>🧾</div>
+                  )}
+                  {/* 정보 */}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4, flexWrap: 'wrap' }}>
+                      <span style={{ fontSize: 13, fontWeight: 700 }}>{r.note || r.ocr_vendor || '설명 없음'}</span>
+                      <span style={{ background: '#ffa50222', color: S.yellow, border: '1px solid #ffa50244', borderRadius: 6, padding: '1px 7px', fontSize: 10, fontWeight: 700 }}>미처리</span>
+                    </div>
+                    <div style={{ fontSize: 11, color: S.sub, marginBottom: 4 }}>
+                      👤 {r.uploader_name || '알수없음'} · {r.uploaded_at ? new Date(r.uploaded_at).toLocaleString('ko-KR', { month:'2-digit', day:'2-digit', hour:'2-digit', minute:'2-digit' }) : ''}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                      {r.ocr_date && <Badge color={S.sub}>{String(r.ocr_date).split('T')[0]}</Badge>}
+                      {r.ocr_amount > 0 && <Badge color={S.green}>{r.ocr_amount.toLocaleString()}원</Badge>}
+                      {r.ocr_receipt_type && <Badge color={S.muted}>{r.ocr_receipt_type}</Badge>}
+                      {r.category_suggestion && <Badge color={S.accent}>{r.category_suggestion}</Badge>}
+                      {r.ocr_vendor && r.note && <Badge color={S.muted}>{r.ocr_vendor}</Badge>}
+                    </div>
+                    <button
+                      onClick={() => {
+                        setModal('tx');
+                        setModalReceiptUrl(r.gcs_url || r.image_url || null);
+                        setForm({
+                          date: r.ocr_date ? String(r.ocr_date).split('T')[0] : today,
+                          type: 'expense',
+                          cost_type: 'election_cost',
+                          category: r.category_suggestion || '',
+                          amount: r.ocr_amount || '',
+                          description: r.note || r.ocr_vendor || '',
+                          receipt_id: r.id,
+                          reimbursable: r.reimbursable_guess ?? true,
+                        });
+                      }}
+                      style={{
+                        padding: '7px 18px', background: S.accent, color: '#fff',
+                        border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700,
+                        cursor: 'pointer', fontFamily: "'Noto Sans KR',sans-serif"
+                      }}
+                    >+ 거래 등록</button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+          </div>
+        )}
+
+        {/* ── SMS 파싱 (회계담당+관리자) ── */}
+        {tab === 3 && isAccountant && (
           <div>
             <Card style={{ marginBottom: 12 }}>
               <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 8 }}>📱 SMS 붙여넣기</div>
@@ -722,7 +764,7 @@ export default function AccountingPage() {
         )}
 
         {/* ── 후원회 (회계담당+관리자) ── */}
-        {tab === 3 && isAccountant && (
+        {tab === 4 && isAccountant && (
           <div>
             <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
               <button onClick={() => { setModal('sponsor_income'); setForm({ date: today, income_type: 'named' }); }} style={{
@@ -764,7 +806,7 @@ export default function AccountingPage() {
         )}
 
         {/* ── 수당 (회계담당+관리자) ── */}
-        {tab === 4 && isAccountant && (
+        {tab === 5 && isAccountant && (
           <div>
             <button onClick={() => { setModal('staff'); setForm({ payment_date: today, staff_role: 'worker', meal_provided: 0, transport_deduction: 0 }); }} style={{
               width: '100%', padding: '10px 0', background: S.accent, color: '#fff',
@@ -792,7 +834,7 @@ export default function AccountingPage() {
         )}
 
         {/* ── 영수증 관리 (회계담당+관리자) ── */}
-        {tab === 5 && isAccountant && (
+        {tab === 6 && isAccountant && (
           <ReceiptTab
             allReceipts={allReceipts}
             dlFrom={dlFrom} dlTo={dlTo}
