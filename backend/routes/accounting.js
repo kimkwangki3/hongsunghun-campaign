@@ -289,6 +289,19 @@ router.get('/receipts/pending', requireAccountant, async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+// ── 영수증 전체 목록 (회계담당+관리자) — 탭용 ────────────
+router.get('/receipts/list', requireAccountant, async (req, res) => {
+  try {
+    const rows = await db.all(
+      `SELECT r.*, u.name AS uploader_name FROM acct_receipts r
+       LEFT JOIN users u ON r.uploaded_by = u.id
+       ORDER BY COALESCE(r.ocr_date, r.uploaded_at::date) DESC, r.id DESC
+       LIMIT 500`
+    );
+    res.json({ success: true, data: rows });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 // ── 영수증 날짜별 ZIP 다운로드 (회계담당+관리자) ──────────
 router.get('/receipts/download', requireAccountant, async (req, res) => {
   try {
@@ -297,8 +310,9 @@ router.get('/receipts/download', requireAccountant, async (req, res) => {
       return res.status(400).json({ success: false, message: '날짜 범위 필요 (?from=YYYY-MM-DD&to=YYYY-MM-DD)' });
     }
 
+    // ocr_date(영수증 기재 날짜) 기준으로 필터
     const rows = await db.all(
-      `SELECT * FROM acct_receipts WHERE uploaded_at::date >= $1 AND uploaded_at::date <= $2 ORDER BY uploaded_at`,
+      `SELECT * FROM acct_receipts WHERE ocr_date >= $1 AND ocr_date <= $2 ORDER BY ocr_date, id`,
       [from, to]
     );
 
@@ -307,16 +321,17 @@ router.get('/receipts/download', requireAccountant, async (req, res) => {
     }
 
     res.setHeader('Content-Type', 'application/zip');
-    res.setHeader('Content-Disposition', `attachment; filename="receipts_${from}_${to}.zip"`);
+    res.setHeader('Content-Disposition', `attachment; filename="영수증_${from}_${to}.zip"`);
 
     const archive = archiver('zip', { zlib: { level: 6 } });
     archive.on('error', err => { if (!res.headersSent) res.status(500).end(); console.error(err); });
     archive.pipe(res);
 
     for (const receipt of rows) {
-      const dateStr = receipt.uploaded_at
-        ? new Date(receipt.uploaded_at).toISOString().split('T')[0]
-        : 'unknown';
+      // 파일명은 영수증 기재 날짜(ocr_date) 기준
+      const dateStr = receipt.ocr_date
+        ? String(receipt.ocr_date).split('T')[0]
+        : (receipt.uploaded_at ? new Date(receipt.uploaded_at).toISOString().split('T')[0] : 'unknown');
       const ext = receipt.image_path ? (path.extname(receipt.image_path) || '.jpg') : '.jpg';
       const vendor = (receipt.ocr_vendor || 'receipt').replace(/[^a-zA-Z가-힣0-9]/g, '_').substring(0, 20);
       const filename = `${dateStr}_${String(receipt.id).padStart(4, '0')}_${vendor}${ext}`;

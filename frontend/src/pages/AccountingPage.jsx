@@ -44,7 +44,7 @@ function GaugeBar({ pct, color = S.accent, warn = 80, danger = 95 }) {
   );
 }
 
-const TABS = ['대시보드', '수입/지출', 'SMS', '후원회', '수당'];
+const TABS = ['대시보드', '수입/지출', 'SMS', '후원회', '수당', '영수증'];
 const ACCT_TABS = ['대시보드', '수입/지출']; // 일반 사용자용
 
 export default function AccountingPage() {
@@ -82,6 +82,7 @@ export default function AccountingPage() {
   const modalReceiptRef = useRef(null);
   const [pendingReceipts, setPendingReceipts] = useState([]);
   const [uploadNote, setUploadNote] = useState('');
+  const [allReceipts, setAllReceipts] = useState([]);
 
   const toast = (m) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
 
@@ -141,6 +142,7 @@ export default function AccountingPage() {
       api.get('/accounting/sponsor/expense').then(r => setSponsorExpense(r.data.data || [])).catch(() => {});
     }
     if (tab === 4 && isAccountant) api.get('/accounting/staff').then(r => setStaff(r.data.data || [])).catch(() => {});
+    if (tab === 5 && isAccountant) api.get('/accounting/receipts/list').then(r => setAllReceipts(r.data.data || [])).catch(() => {});
   }, [tab, isAccountant, loadSummary, loadTransactions, loadPendingReceipts]);
 
   async function handleSmsParse() {
@@ -605,35 +607,6 @@ export default function AccountingPage() {
               </div>
             )}
 
-            {/* 영수증 날짜별 다운로드 (회계담당/관리자) */}
-            {isAccountant && (
-              <Card>
-                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 10 }}>📥 영수증 ZIP 다운로드</div>
-                <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 10, color: S.sub, marginBottom: 3 }}>시작일</div>
-                    <input type="date" value={dlFrom} onChange={e => setDlFrom(e.target.value)} style={inputStyle} />
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 10, color: S.sub, marginBottom: 3 }}>종료일</div>
-                    <input type="date" value={dlTo} onChange={e => setDlTo(e.target.value)} style={inputStyle} />
-                  </div>
-                </div>
-                <button onClick={handleDownloadReceipts} disabled={dlLoading || !dlFrom || !dlTo} style={{
-                  width: '100%', padding: '10px 0',
-                  background: dlLoading ? S.muted : '#065f46',
-                  color: '#fff', border: 'none', borderRadius: 8,
-                  fontWeight: 700, fontSize: 12, cursor: 'pointer',
-                  opacity: (!dlFrom || !dlTo) ? 0.5 : 1,
-                  fontFamily: "'Noto Sans KR',sans-serif"
-                }}>
-                  {dlLoading ? '다운로드 중...' : '📦 ZIP으로 다운로드'}
-                </button>
-                <div style={{ fontSize: 10, color: S.muted, marginTop: 6, lineHeight: 1.5 }}>
-                  원본 영수증은 Google Cloud에도 자동 백업됩니다
-                </div>
-              </Card>
-            )}
           </div>
         )}
 
@@ -814,6 +787,17 @@ export default function AccountingPage() {
             ))}
           </div>
         )}
+
+        {/* ── 영수증 관리 (회계담당+관리자) ── */}
+        {tab === 5 && isAccountant && (
+          <ReceiptTab
+            allReceipts={allReceipts}
+            dlFrom={dlFrom} dlTo={dlTo}
+            setDlFrom={setDlFrom} setDlTo={setDlTo}
+            dlLoading={dlLoading}
+            onDownload={handleDownloadReceipts}
+          />
+        )}
       </div>
 
       {/* ── 등록 모달 ── */}
@@ -961,6 +945,114 @@ const inputStyle = {
   borderRadius: 8, padding: '9px 12px', color: '#e8edf5',
   fontSize: 13, fontFamily: "'Noto Sans KR',sans-serif", outline: 'none', boxSizing: 'border-box'
 };
+
+// ── 영수증 탭 컴포넌트 ─────────────────────────────────────
+function ReceiptTab({ allReceipts, dlFrom, dlTo, setDlFrom, setDlTo, dlLoading, onDownload }) {
+  const S2 = { bg:'#0a0e1a', surface:'#111827', surface2:'#1a2236', border:'1px solid #1e2d45', accent:'#1e6bff', green:'#10b981', red:'#ef4444', sub:'#8896b3', muted:'#4a5878', text:'#e8edf5' };
+
+  // ocr_date 기준으로 날짜 그룹핑
+  const grouped = allReceipts.reduce((acc, r) => {
+    const d = r.ocr_date ? String(r.ocr_date).split('T')[0] : null;
+    const key = d || '날짜 미인식';
+    if (!acc[key]) acc[key] = [];
+    acc[key].push(r);
+    return acc;
+  }, {});
+  const sortedDates = Object.keys(grouped).sort((a, b) => b.localeCompare(a));
+
+  async function downloadDay(date) {
+    if (date === '날짜 미인식') return;
+    try {
+      const r = await (await import('../utils/api')).api.get(
+        `/accounting/receipts/download?from=${date}&to=${date}`,
+        { responseType: 'blob' }
+      );
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement('a'); a.href = url;
+      a.download = `영수증_${date}.zip`; a.click();
+      URL.revokeObjectURL(url);
+    } catch {}
+  }
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+      {/* 범위 다운로드 */}
+      <div style={{ background: S2.surface, border: S2.border, borderRadius: 12, padding: 14 }}>
+        <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 10 }}>📦 기간별 ZIP 다운로드</div>
+        <div style={{ fontSize: 11, color: S2.sub, marginBottom: 8 }}>영수증에 기재된 날짜 기준으로 다운로드</div>
+        <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 10, color: S2.sub, marginBottom: 3 }}>시작일</div>
+            <input type="date" value={dlFrom} onChange={e => setDlFrom(e.target.value)}
+              style={{ width:'100%', background:'#1a2236', border:'1px solid #1e2d45', borderRadius:8, padding:'8px 10px', color:'#e8edf5', fontSize:13, boxSizing:'border-box' }} />
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontSize: 10, color: S2.sub, marginBottom: 3 }}>종료일</div>
+            <input type="date" value={dlTo} onChange={e => setDlTo(e.target.value)}
+              style={{ width:'100%', background:'#1a2236', border:'1px solid #1e2d45', borderRadius:8, padding:'8px 10px', color:'#e8edf5', fontSize:13, boxSizing:'border-box' }} />
+          </div>
+        </div>
+        <button onClick={onDownload} disabled={dlLoading || !dlFrom || !dlTo} style={{
+          width:'100%', padding:'10px 0', background: (!dlFrom||!dlTo) ? S2.muted : '#065f46',
+          color:'#fff', border:'none', borderRadius:8, fontWeight:700, fontSize:13,
+          cursor: (!dlFrom||!dlTo) ? 'default' : 'pointer', opacity: dlLoading ? 0.6 : 1,
+          fontFamily:"'Noto Sans KR',sans-serif"
+        }}>{dlLoading ? '다운로드 중...' : '📦 ZIP으로 다운로드'}</button>
+      </div>
+
+      {/* 날짜별 목록 */}
+      <div style={{ fontSize: 12, fontWeight: 700, color: S2.sub }}>{allReceipts.length}개 영수증 (날짜별)</div>
+
+      {sortedDates.map(date => (
+        <div key={date} style={{ background: S2.surface, border: S2.border, borderRadius: 12, overflow: 'hidden' }}>
+          {/* 날짜 헤더 */}
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', padding:'10px 14px', background: S2.surface2 }}>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>
+              {date === '날짜 미인식' ? '📋 날짜 미인식' : `📅 ${date}`}
+              <span style={{ fontSize: 11, color: S2.sub, marginLeft: 8 }}>{grouped[date].length}건</span>
+            </div>
+            {date !== '날짜 미인식' && (
+              <button onClick={() => downloadDay(date)} style={{
+                padding:'4px 12px', background:'#065f46', color:'#fff',
+                border:'none', borderRadius:6, fontSize:11, fontWeight:700, cursor:'pointer',
+                fontFamily:"'Noto Sans KR',sans-serif"
+              }}>⬇ 다운로드</button>
+            )}
+          </div>
+
+          {/* 영수증 목록 */}
+          {grouped[date].map(r => (
+            <div key={r.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'10px 14px', borderTop:'1px solid #1e2d45' }}>
+              {(r.gcs_url || r.image_url) ? (
+                <img src={r.gcs_url || r.image_url} alt="영수증"
+                  style={{ width:44, height:44, objectFit:'cover', borderRadius:6, background:S2.surface2, flexShrink:0 }}
+                  onError={e => { e.target.style.display='none'; }} />
+              ) : (
+                <div style={{ width:44, height:44, borderRadius:6, background:S2.surface2, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, fontSize:20 }}>🧾</div>
+              )}
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ fontSize:12, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                  {r.note || r.ocr_vendor || '업체 미인식'}
+                  {r.ocr_amount ? <span style={{ color:S2.green, marginLeft:6 }}>{r.ocr_amount.toLocaleString()}원</span> : null}
+                </div>
+                <div style={{ fontSize:10, color:S2.sub }}>
+                  {r.uploader_name || '알수없음'}
+                  {r.ocr_receipt_type ? ` · ${r.ocr_receipt_type}` : ''}
+                  {r.status === 'PROCESSED' ? <span style={{ color:S2.green, marginLeft:4 }}>✓ 처리완료</span> : <span style={{ color:'#ffa502', marginLeft:4 }}>⏳ 미처리</span>}
+                  {r.gcs_url && <span style={{ color:S2.green, marginLeft:4 }}>☁</span>}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      ))}
+
+      {allReceipts.length === 0 && (
+        <div style={{ textAlign:'center', color:S2.muted, padding:40, fontSize:13 }}>영수증 없음</div>
+      )}
+    </div>
+  );
+}
 
 function ReceiptAttach({ preview, file, inputRef, onSelect, onClear }) {
   return (
