@@ -69,6 +69,8 @@ export default function AccountingPage() {
   const [dlFrom, setDlFrom] = useState('');
   const [dlTo, setDlTo] = useState('');
   const [dlLoading, setDlLoading] = useState(false);
+  const [sheetUrl, setSheetUrl] = useState(null);
+  const [syncLoading, setSyncLoading] = useState(false);
   const [uploadFile, setUploadFile] = useState(null);
   const [uploadPreview, setUploadPreview] = useState(null);
   const [uploadLoading, setUploadLoading] = useState(false);
@@ -77,6 +79,17 @@ export default function AccountingPage() {
   const fileInputRef = useRef(null);
 
   const toast = (m) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
+
+  async function handleSheetsSync() {
+    setSyncLoading(true);
+    try {
+      const r = await api.post('/accounting/sheets/sync');
+      const d = r.data.data;
+      toast(`✅ 동기화 완료 — 거래 ${d.tx}건 · 영수증 ${d.receipts}건 · 수당 ${d.staff}건`);
+    } catch (e) {
+      toast(`❌ ${e.response?.data?.message || '동기화 실패'}`);
+    } finally { setSyncLoading(false); }
+  }
 
   const loadSummary = useCallback(async () => {
     try { const r = await api.get('/accounting/summary'); setSummary(r.data.data); } catch {}
@@ -100,6 +113,12 @@ export default function AccountingPage() {
   }, []);
 
   useEffect(() => { loadSummary(); loadRecentReceipts(); }, [loadSummary, loadRecentReceipts]);
+  useEffect(() => {
+    if (!isAccountant) return;
+    api.get('/accounting/sheets/url').then(r => {
+      if (r.data.data?.url) setSheetUrl(r.data.data.url);
+    }).catch(() => {});
+  }, [isAccountant]);
   useEffect(() => {
     if (tab === 0) { loadSummary(); loadRecentReceipts(); }
     if (tab === 1) loadTransactions();
@@ -237,12 +256,28 @@ export default function AccountingPage() {
               <div style={{ fontSize: 10, color: S.sub }}>순천시 제7선거구 · 제한액 {LIMIT.toLocaleString()}원</div>
             </div>
           </div>
-          {isAccountant && (
-            <button onClick={() => { setModal('tx'); setForm({ date: today, type: 'expense', cost_type: 'election_cost' }); }} style={{
-              background: S.accent, color: '#fff', border: 'none', borderRadius: 8,
-              padding: '7px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer'
-            }}>+ 등록</button>
-          )}
+          <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+            {isAccountant && sheetUrl && (
+              <a href={sheetUrl} target="_blank" rel="noopener noreferrer" style={{
+                background:'#0f5132', color:'#fff', border:'none', borderRadius:8,
+                padding:'7px 12px', fontSize:11, fontWeight:700, cursor:'pointer',
+                textDecoration:'none', display:'flex', alignItems:'center', gap:4
+              }}>📊 시트</a>
+            )}
+            {isAccountant && (
+              <button onClick={handleSheetsSync} disabled={syncLoading} style={{
+                background:'#1a3a1a', color:'#4ade80', border:'1px solid #4ade8044', borderRadius:8,
+                padding:'7px 12px', fontSize:11, fontWeight:700, cursor:'pointer',
+                opacity: syncLoading ? 0.6 : 1
+              }}>{syncLoading ? '동기화중...' : '🔄 동기화'}</button>
+            )}
+            {isAccountant && (
+              <button onClick={() => { setModal('tx'); setForm({ date: today, type: 'expense', cost_type: 'election_cost' }); }} style={{
+                background: S.accent, color: '#fff', border: 'none', borderRadius: 8,
+                padding: '7px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer'
+              }}>+ 등록</button>
+            )}
+          </div>
         </div>
 
         {/* 탭 */}

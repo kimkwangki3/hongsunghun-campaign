@@ -8,9 +8,15 @@ const { db } = require('../database');
 const { requireAccountant, requireAccountingView } = require('../middleware/auth');
 const { processBatchSms, getPendingCount } = require('../utils/acctSmsService');
 const { backupToGCS, downloadGCSBuffer } = require('../utils/gcsBackup');
+const { appendRow, setupSheets, syncAll } = require('../utils/googleSheets');
 
 const LIMIT = 52289440; // 순천시 제7선거구 제한액
 const SPONSOR_LIMIT = 26144720; // 후원회 모금 한도 (제한액 50%)
+
+// Google Sheets 비동기 fire-and-forget
+function toSheets(sheetName, values) {
+  appendRow(sheetName, values).catch(e => console.error('[Sheets]', e.message));
+}
 
 // 영수증 업로드 설정
 const uploadsDir = path.join(__dirname, '../public/receipts');
@@ -112,6 +118,19 @@ router.post('/transactions', requireAccountant, async (req, res) => {
        d.account_verified ?? false, d.approved ?? false, d.reimbursable,
        d.note, req.user.id]
     );
+    // Google Sheets 자동 동기화 (fire-and-forget)
+    toSheets('수입지출장부', [
+      '', row.date,
+      row.type === 'income' ? '수입' : '지출',
+      row.cost_type === 'election_cost' ? '선거비용' : row.cost_type === 'non_election_cost' ? '비선거비용' : '',
+      row.category||'', row.description||'', row.amount,
+      row.receipt_no||'', row.account_verified?'O':'', row.reimbursable?'O':'',
+      row.note||'', req.user.name||req.user.id,
+      new Date().toLocaleString('ko-KR'),
+    ]);
+    if (row.type === 'expense' && row.cost_type === 'election_cost') {
+      toSheets('선거비용명세', ['', row.date, row.category||'', row.description||'', row.amount, '', row.receipt_no||'', row.reimbursable?'O':'', row.note||'']);
+    }
     res.status(201).json({ success: true, data: row });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
@@ -227,6 +246,8 @@ router.post('/receipts/upload', requireAccountingView, upload.single('file'), as
       }
     }).catch(() => {});
 
+    // Google Sheets 영수증목록 동기화
+    toSheets('영수증목록', ['', new Date().toLocaleDateString('ko-KR'), row.ocr_date||'', row.ocr_vendor||'', row.ocr_vendor_reg_no||'', row.ocr_receipt_type||'', row.ocr_amount||'', row.category_suggestion||'', req.user.name||req.user.id, '']);
     res.json({ success: true, data: row });
   } catch (e) {
     console.error('영수증 DB 저장 오류:', e);
@@ -336,6 +357,14 @@ router.post('/sms/:id/approve', requireAccountant, async (req, res) => {
       `UPDATE acct_sms_raw SET status='PROCESSED', processed_at=NOW(), transaction_id=$1 WHERE id=$2`,
       [row.id, sms.id]
     );
+    toSheets('수입지출장부', [
+      '', row.date,
+      row.type === 'income' ? '수입' : '지출',
+      row.cost_type === 'election_cost' ? '선거비용' : row.cost_type === 'non_election_cost' ? '비선거비용' : '',
+      row.category||'', row.description||'', row.amount,
+      row.receipt_no||'', '', row.reimbursable?'O':'',
+      'SMS자동', req.user.name||req.user.id, new Date().toLocaleString('ko-KR'),
+    ]);
     res.json({ success: true, data: row });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
@@ -385,6 +414,7 @@ router.post('/sponsor/income', requireAccountant, async (req, res) => {
       [d.date, d.amount, d.income_type || 'named', d.donor_name, d.donor_dob,
        d.donor_address, d.donor_occupation, d.donor_phone, d.receipt_no, d.note]
     );
+    toSheets('후원회수입', ['', row.date, row.donor_name||'익명', row.donor_dob||'', row.donor_address||'', row.donor_occupation||'', row.donor_phone||'', row.amount, row.receipt_no||'', row.note||'']);
     res.status(201).json({ success: true, data: row });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
@@ -404,6 +434,7 @@ router.post('/sponsor/expense', requireAccountant, async (req, res) => {
        VALUES ($1,$2,$3,$4,$5) RETURNING *`,
       [d.date, d.amount, d.category, d.receipt_no, d.note]
     );
+    toSheets('후원회지출', ['', row.date, row.category, row.note||'', row.amount, row.receipt_no||'', '']);
     res.status(201).json({ success: true, data: row });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
@@ -433,8 +464,34 @@ router.post('/staff', requireAccountant, async (req, res) => {
        d.allowance || 0, d.meal_provided || 0, d.transport_deduction || 0,
        total, d.receipt_no, d.approved ?? false, d.note]
     );
+    const ROLE_MAP_LOCAL = { manager:'선거사무장', branch_manager:'선거연락소장', accountant:'회계책임자', worker:'선거사무원' };
+    toSheets('수당실비명세', ['', row.payment_date, ROLE_MAP_LOCAL[row.staff_role]||row.staff_role, row.staff_name, row.staff_account||'', row.allowance, 20000, Math.max(0,25000-(row.meal_provided||0)*8330), row.transport_deduction||0, row.total_actual||0, row.receipt_no||'', row.approved?'승인':'미승인', row.note||'']);
     res.status(201).json({ success: true, data: row });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── 구글시트 초기화 (admin) ────────────────────────────
+const { requireAdmin } = require('../middleware/auth');
+router.post('/sheets/setup', requireAdmin, async (req, res) => {
+  try {
+    const sheets = await setupSheets();
+    res.json({ success: true, data: { sheets } });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── 구글시트 전체 동기화 (admin+accountant) ────────────
+router.post('/sheets/sync', requireAccountant, async (req, res) => {
+  try {
+    const result = await syncAll(db);
+    res.json({ success: true, data: result });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── 시트 URL 반환 ──────────────────────────────────────
+router.get('/sheets/url', requireAccountant, (req, res) => {
+  const id = process.env.GOOGLE_SHEET_ID;
+  if (!id) return res.json({ success: true, data: { url: null, configured: false } });
+  res.json({ success: true, data: { url: `https://docs.google.com/spreadsheets/d/${id}/edit`, configured: true } });
 });
 
 module.exports = router;
