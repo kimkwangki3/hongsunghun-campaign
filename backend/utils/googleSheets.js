@@ -32,7 +32,7 @@ function getClient() {
 
 // 단일 행 추가 (fire-and-forget 용)
 async function appendRow(sheetName, values) {
-  const spreadsheetId = process.env.GOOGLE_SHEET_ID;
+  const spreadsheetId = (process.env.GOOGLE_SHEET_ID || '').trim();
   if (!spreadsheetId) return;
   const client = getClient();
   if (!client) return;

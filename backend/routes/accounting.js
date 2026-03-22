@@ -599,7 +599,7 @@ router.get('/sheets/diagnose', requireAdmin, async (req, res) => {
     result.auth = token.token ? '✅ 인증 토큰 획득 성공' : '❌ 토큰 없음';
 
     const sheets = google.sheets({ version: 'v4', auth });
-    const meta = await sheets.spreadsheets.get({ spreadsheetId: process.env.GOOGLE_SHEET_ID });
+    const meta = await sheets.spreadsheets.get({ spreadsheetId: (process.env.GOOGLE_SHEET_ID||'').trim() });
     result.spreadsheet = '✅ 스프레드시트 접근 성공: ' + meta.data.properties.title;
     result.sheets = meta.data.sheets.map(s => s.properties.title);
   } catch (e) {
