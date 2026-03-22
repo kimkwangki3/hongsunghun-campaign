@@ -126,6 +126,7 @@ async function initDB() {
       ocr_confidence    DECIMAL(3,2),
       category_suggestion VARCHAR(50),
       reimbursable_guess  BOOLEAN,
+      gcs_url           TEXT,
       status            VARCHAR(20) DEFAULT 'PENDING',
       uploaded_by       TEXT REFERENCES users(id),
       uploaded_at       TIMESTAMP DEFAULT NOW(),
@@ -171,6 +172,8 @@ async function initDB() {
       created_at     TIMESTAMP DEFAULT NOW()
     )
   `);
+  // gcs_url 컬럼 마이그레이션 (기존 DB 대응)
+  await db.run(`ALTER TABLE acct_receipts ADD COLUMN IF NOT EXISTS gcs_url TEXT`);
   await db.run(`CREATE INDEX IF NOT EXISTS idx_acct_sms_status ON acct_sms_raw(status)`);
   await db.run(`CREATE INDEX IF NOT EXISTS idx_acct_sms_hash   ON acct_sms_raw(hash)`);
   await db.run(`

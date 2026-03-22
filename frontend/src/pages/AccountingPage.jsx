@@ -62,10 +62,13 @@ export default function AccountingPage() {
   const [sponsorIncome, setSponsorIncome] = useState([]);
   const [sponsorExpense, setSponsorExpense] = useState([]);
   const [staff, setStaff] = useState([]);
-  const [modal, setModal] = useState(null); // { type: 'tx'|'sponsor_income'|'sponsor_expense'|'staff' }
+  const [modal, setModal] = useState(null);
   const [form, setForm] = useState({});
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
+  const [dlFrom, setDlFrom] = useState('');
+  const [dlTo, setDlTo] = useState('');
+  const [dlLoading, setDlLoading] = useState(false);
 
   const toast = (m) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
 
@@ -148,6 +151,24 @@ export default function AccountingPage() {
       }
       if (modal === 'staff') api.get('/accounting/staff').then(r => setStaff(r.data.data || []));
     } catch (e) { toast(`❌ ${e.response?.data?.message || '등록 실패'}`); } finally { setLoading(false); }
+  }
+
+  async function handleDownloadReceipts() {
+    if (!dlFrom || !dlTo) { toast('❌ 날짜 범위를 선택하세요'); return; }
+    setDlLoading(true);
+    try {
+      const r = await api.get(`/accounting/receipts/download?from=${dlFrom}&to=${dlTo}`, { responseType: 'blob' });
+      const url = URL.createObjectURL(r.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `receipts_${dlFrom}_${dlTo}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast('✅ 다운로드 완료');
+    } catch (e) {
+      const msg = e.response?.status === 404 ? '해당 기간 영수증 없음' : '다운로드 실패';
+      toast(`❌ ${msg}`);
+    } finally { setDlLoading(false); }
   }
 
   async function deleteTx(id) {
@@ -265,6 +286,36 @@ export default function AccountingPage() {
                   <div style={{ fontSize: 11, color: S.sub }}>탭하여 처리하기</div>
                 </div>
               </div>
+            )}
+
+            {/* 영수증 날짜별 다운로드 (회계담당/관리자) */}
+            {isAccountant && (
+              <Card>
+                <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 10 }}>📥 영수증 ZIP 다운로드</div>
+                <div style={{ display: 'flex', gap: 6, marginBottom: 8 }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 10, color: S.sub, marginBottom: 3 }}>시작일</div>
+                    <input type="date" value={dlFrom} onChange={e => setDlFrom(e.target.value)} style={inputStyle} />
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 10, color: S.sub, marginBottom: 3 }}>종료일</div>
+                    <input type="date" value={dlTo} onChange={e => setDlTo(e.target.value)} style={inputStyle} />
+                  </div>
+                </div>
+                <button onClick={handleDownloadReceipts} disabled={dlLoading || !dlFrom || !dlTo} style={{
+                  width: '100%', padding: '10px 0',
+                  background: dlLoading ? S.muted : '#065f46',
+                  color: '#fff', border: 'none', borderRadius: 8,
+                  fontWeight: 700, fontSize: 12, cursor: 'pointer',
+                  opacity: (!dlFrom || !dlTo) ? 0.5 : 1,
+                  fontFamily: "'Noto Sans KR',sans-serif"
+                }}>
+                  {dlLoading ? '다운로드 중...' : '📦 ZIP으로 다운로드'}
+                </button>
+                <div style={{ fontSize: 10, color: S.muted, marginTop: 6, lineHeight: 1.5 }}>
+                  원본 영수증은 Google Cloud에도 자동 백업됩니다
+                </div>
+              </Card>
             )}
           </div>
         )}

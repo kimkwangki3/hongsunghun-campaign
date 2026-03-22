@@ -1,11 +1,13 @@
 // routes/accounting.js — 선거회계 관리
 const router = require('express').Router();
 const multer = require('multer');
+const archiver = require('archiver');
 const path = require('path');
 const fs = require('fs');
 const { db } = require('../database');
 const { requireAccountant, requireAccountingView } = require('../middleware/auth');
 const { processBatchSms, getPendingCount } = require('../utils/acctSmsService');
+const { backupToGCS, downloadGCSBuffer } = require('../utils/gcsBackup');
 
 const LIMIT = 52289440; // 순천시 제7선거구 제한액
 const SPONSOR_LIMIT = 26144720; // 후원회 모금 한도 (제한액 50%)
@@ -154,58 +156,80 @@ router.get('/reimbursement-sim', requireAccountingView, async (req, res) => {
 });
 
 // ── 영수증 OCR 업로드 (모든 로그인 사용자) ─────────────
+// 규칙: 업로드된 파일은 절대 삭제 금지 — OCR 실패해도 DB에 저장 + GCS 백업
 router.post('/receipts/upload', requireAccountingView, upload.single('file'), async (req, res) => {
   if (!req.file) return res.status(400).json({ success: false, message: '파일 없음' });
-  const tmpPath = req.file.path;
+
+  // 파일명에 확장자 추가 (multer 기본은 확장자 없이 저장)
+  const origExt = path.extname(req.file.originalname).toLowerCase() || '.jpg';
+  const finalPath = req.file.path + origExt;
+  try { fs.renameSync(req.file.path, finalPath); } catch {}
+
+  const imageUrl = `/receipts/${req.file.filename}${origExt}`;
+  let rawText = '', parsed = {};
+
+  // OCR 시도 (실패해도 진행)
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) return res.status(503).json({ success: false, message: 'AI 미설정' });
-    const imgBuf = fs.readFileSync(tmpPath);
-    const b64 = imgBuf.toString('base64');
-    const ext = path.extname(req.file.originalname).toLowerCase().replace('.', '');
-    const mediaType = ext === 'png' ? 'image/png' : ext === 'webp' ? 'image/webp' : 'image/jpeg';
+    if (apiKey) {
+      const imgBuf = fs.readFileSync(finalPath);
+      const b64 = imgBuf.toString('base64');
+      const mediaType =
+        origExt === '.png'  ? 'image/png'  :
+        origExt === '.webp' ? 'image/webp' : 'image/jpeg';
+      const aiResp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 512,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: mediaType, data: b64 } },
+              { type: 'text', text: '이 영수증을 분석해 JSON만 반환하세요:\n{"date":"YYYY-MM-DD","amount":숫자,"vendor":"업체명","vendor_reg_no":"사업자번호","receipt_type":"세금계산서|카드매출전표|현금영수증|간이영수증|수령증","category_suggestion":"선거비용과목","reimbursable":true/false,"confidence":0.0~1.0}' }
+            ]
+          }]
+        })
+      });
+      const aiData = await aiResp.json();
+      rawText = aiData.content?.[0]?.text || '';
+      try { parsed = JSON.parse(rawText.match(/\{[\s\S]*\}/)?.[0] || '{}'); } catch {}
+    }
+  } catch (ocrErr) {
+    console.error('OCR 오류 (파일 보존 후 계속):', ocrErr.message);
+  }
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 512,
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'image', source: { type: 'base64', media_type: mediaType, data: b64 } },
-            { type: 'text', text: `이 영수증을 분석해 JSON만 반환하세요:
-{"date":"YYYY-MM-DD","amount":숫자,"vendor":"업체명","vendor_reg_no":"사업자번호","receipt_type":"세금계산서|카드매출전표|현금영수증|간이영수증|수령증","category_suggestion":"선거비용과목","reimbursable":true/false,"confidence":0.0~1.0}` }
-          ]
-        }]
-      })
-    });
-    const aiData = await response.json();
-    const rawText = aiData.content?.[0]?.text || '';
-    let parsed = {};
-    try { parsed = JSON.parse(rawText.match(/\{[\s\S]*\}/)?.[0] || '{}'); } catch {}
-
-    const imageUrl = `/receipts/${req.file.filename}`;
+  // 항상 DB 저장 (OCR 성공/실패 무관)
+  try {
     const row = await db.get(
       `INSERT INTO acct_receipts
          (image_path,image_url,ocr_raw,ocr_date,ocr_amount,ocr_vendor,ocr_vendor_reg_no,
           ocr_receipt_type,ocr_confidence,category_suggestion,reimbursable_guess,uploaded_by,uploaded_at)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW()) RETURNING *`,
-      [tmpPath, imageUrl, rawText, parsed.date || null, parsed.amount || null,
+      [finalPath, imageUrl, rawText || null, parsed.date || null, parsed.amount || null,
        parsed.vendor || null, parsed.vendor_reg_no || null,
        parsed.receipt_type || null, parsed.confidence || null,
        parsed.category_suggestion || null, parsed.reimbursable ?? null,
        req.user.id]
     );
+
+    // GCS 백업 — 비동기 fire-and-forget (실패해도 응답에 영향 없음)
+    backupToGCS(finalPath, req.file.originalname).then(gcsUrl => {
+      if (gcsUrl) {
+        db.run('UPDATE acct_receipts SET gcs_url=$1 WHERE id=$2', [gcsUrl, row.id])
+          .then(() => console.log(`✅ GCS 백업 완료 (id=${row.id}): ${gcsUrl}`))
+          .catch(() => {});
+      }
+    }).catch(() => {});
+
     res.json({ success: true, data: row });
   } catch (e) {
-    console.error('OCR 오류:', e);
-    if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath);
+    console.error('영수증 DB 저장 오류:', e);
     res.status(500).json({ success: false, message: e.message });
   }
 });
@@ -220,6 +244,57 @@ router.get('/receipts', requireAccountingView, async (req, res) => {
     );
     res.json({ success: true, data: rows });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── 영수증 날짜별 ZIP 다운로드 (회계담당+관리자) ──────────
+router.get('/receipts/download', requireAccountant, async (req, res) => {
+  try {
+    const { from, to } = req.query;
+    if (!from || !to) {
+      return res.status(400).json({ success: false, message: '날짜 범위 필요 (?from=YYYY-MM-DD&to=YYYY-MM-DD)' });
+    }
+
+    const rows = await db.all(
+      `SELECT * FROM acct_receipts WHERE uploaded_at::date >= $1 AND uploaded_at::date <= $2 ORDER BY uploaded_at`,
+      [from, to]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({ success: false, message: '해당 기간 영수증 없음' });
+    }
+
+    res.setHeader('Content-Type', 'application/zip');
+    res.setHeader('Content-Disposition', `attachment; filename="receipts_${from}_${to}.zip"`);
+
+    const archive = archiver('zip', { zlib: { level: 6 } });
+    archive.on('error', err => { if (!res.headersSent) res.status(500).end(); console.error(err); });
+    archive.pipe(res);
+
+    for (const receipt of rows) {
+      const dateStr = receipt.uploaded_at
+        ? new Date(receipt.uploaded_at).toISOString().split('T')[0]
+        : 'unknown';
+      const ext = receipt.image_path ? (path.extname(receipt.image_path) || '.jpg') : '.jpg';
+      const vendor = (receipt.ocr_vendor || 'receipt').replace(/[^a-zA-Z가-힣0-9]/g, '_').substring(0, 20);
+      const filename = `${dateStr}_${String(receipt.id).padStart(4, '0')}_${vendor}${ext}`;
+
+      if (receipt.image_path && fs.existsSync(receipt.image_path)) {
+        archive.file(receipt.image_path, { name: filename });
+      } else if (receipt.gcs_url) {
+        try {
+          const buf = await downloadGCSBuffer(receipt.gcs_url);
+          archive.append(buf, { name: filename });
+        } catch (e) {
+          console.warn(`GCS 다운로드 건너뜀 (id=${receipt.id}):`, e.message);
+        }
+      }
+    }
+
+    await archive.finalize();
+  } catch (e) {
+    console.error('영수증 다운로드 오류:', e);
+    if (!res.headersSent) res.status(500).json({ success: false, message: e.message });
+  }
 });
 
 // ── SMS 입력 (회계담당+관리자) ──────────────────────────
