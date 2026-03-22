@@ -107,35 +107,15 @@ async function setupSheets() {
     });
   }
 
-  // 헤더 일괄 작성
-  for (const [name, headers] of Object.entries(SHEET_HEADERS)) {
-    await client.spreadsheets.values.update({
-      spreadsheetId,
-      range: `${name}!A1`,
-      valueInputOption: 'RAW',
-      requestBody: { values: [headers] },
-    });
-  }
+  // 헤더 일괄 작성 (서식 없이 데이터만)
+  const headerValues = Object.entries(SHEET_HEADERS).map(([name, headers]) => ({
+    range: `${name}!A1`, values: [headers]
+  }));
+  await client.spreadsheets.values.batchUpdate({
+    spreadsheetId,
+    requestBody: { valueInputOption: 'RAW', data: headerValues }
+  });
 
-  // 헤더 서식 (남색 배경, 흰 볼드)
-  const afterMeta = await client.spreadsheets.get({ spreadsheetId });
-  const idMap = Object.fromEntries(afterMeta.data.sheets.map(s => [s.properties.title, s.properties.sheetId]));
-  const fmtRequests = Object.entries(SHEET_HEADERS).map(([name, headers]) => ({
-    repeatCell: {
-      range: { sheetId: idMap[name], startRowIndex: 0, endRowIndex: 1, startColumnIndex: 0, endColumnIndex: headers.length },
-      cell: { userEnteredFormat: {
-        backgroundColor: { red: 0.18, green: 0.33, blue: 0.76 },
-        textFormat: { bold: true, foregroundColor: { red: 1, green: 1, blue: 1 }, fontSize: 10 },
-        horizontalAlignment: 'CENTER',
-      }},
-      fields: 'userEnteredFormat(backgroundColor,textFormat,horizontalAlignment)',
-    },
-  }));
-  // 열 고정 (1행 고정)
-  const freezeRequests = Object.values(idMap).map(sheetId => ({
-    updateSheetProperties: { properties: { sheetId, gridProperties: { frozenRowCount: 1 } }, fields: 'gridProperties.frozenRowCount' },
-  }));
-  await client.spreadsheets.batchUpdate({ spreadsheetId, requestBody: { requests: [...fmtRequests, ...freezeRequests] } });
   return { sheets: Object.keys(SHEET_HEADERS), spreadsheetId };
 }
 
