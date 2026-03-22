@@ -77,6 +77,11 @@ export default function AccountingPage() {
   const [uploadResult, setUploadResult] = useState(null);
   const [recentReceipts, setRecentReceipts] = useState([]);
   const fileInputRef = useRef(null);
+  const [modalReceiptFile, setModalReceiptFile] = useState(null);
+  const [modalReceiptPreview, setModalReceiptPreview] = useState(null);
+  const modalReceiptRef = useRef(null);
+  const [pendingReceipts, setPendingReceipts] = useState([]);
+  const [uploadNote, setUploadNote] = useState('');
 
   const toast = (m) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
 
@@ -112,7 +117,15 @@ export default function AccountingPage() {
     } catch {}
   }, []);
 
-  useEffect(() => { loadSummary(); loadRecentReceipts(); }, [loadSummary, loadRecentReceipts]);
+  const loadPendingReceipts = useCallback(async () => {
+    if (!isAccountant) return;
+    try {
+      const r = await api.get('/accounting/receipts/pending');
+      setPendingReceipts(r.data.data || []);
+    } catch {}
+  }, [isAccountant]);
+
+  useEffect(() => { loadSummary(); loadRecentReceipts(); loadPendingReceipts(); }, [loadSummary, loadRecentReceipts, loadPendingReceipts]);
   useEffect(() => {
     if (!isAccountant) return;
     api.get('/accounting/sheets/url').then(r => {
@@ -120,7 +133,7 @@ export default function AccountingPage() {
     }).catch(() => {});
   }, [isAccountant]);
   useEffect(() => {
-    if (tab === 0) { loadSummary(); loadRecentReceipts(); }
+    if (tab === 0) { loadSummary(); loadRecentReceipts(); loadPendingReceipts(); }
     if (tab === 1) loadTransactions();
     if (tab === 2 && isAccountant) api.get('/accounting/sms?status=PENDING').then(r => setSmsList(r.data.data || [])).catch(() => {});
     if (tab === 3 && isAccountant) {
@@ -128,7 +141,7 @@ export default function AccountingPage() {
       api.get('/accounting/sponsor/expense').then(r => setSponsorExpense(r.data.data || [])).catch(() => {});
     }
     if (tab === 4 && isAccountant) api.get('/accounting/staff').then(r => setStaff(r.data.data || [])).catch(() => {});
-  }, [tab, isAccountant, loadSummary, loadTransactions]);
+  }, [tab, isAccountant, loadSummary, loadTransactions, loadPendingReceipts]);
 
   async function handleSmsParse() {
     const lines = smsInput.split('\n').filter(l => l.trim());
@@ -164,18 +177,45 @@ export default function AccountingPage() {
     } catch {}
   }
 
+  function clearModalReceipt() {
+    setModalReceiptFile(null);
+    setModalReceiptPreview(null);
+    if (modalReceiptRef.current) modalReceiptRef.current.value = '';
+  }
+
+  function handleModalReceiptSelect(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setModalReceiptFile(file);
+    const reader = new FileReader();
+    reader.onload = ev => setModalReceiptPreview(ev.target.result);
+    reader.readAsDataURL(file);
+  }
+
   async function submitForm() {
     setLoading(true);
     try {
-      let url = '', method = 'post';
+      // 영수증 파일이 있으면 먼저 업로드 → receipt_id 획득
+      let receiptId = form.receipt_id || null;
+      if (modalReceiptFile) {
+        const fd = new FormData();
+        fd.append('file', modalReceiptFile);
+        const r = await api.post('/accounting/receipts/upload', fd, {
+          headers: { 'Content-Type': 'multipart/form-data' }
+        });
+        receiptId = r.data.data?.id || null;
+        loadRecentReceipts();
+      }
+
+      let url = '';
       if (modal === 'tx') url = '/accounting/transactions';
       else if (modal === 'sponsor_income') url = '/accounting/sponsor/income';
       else if (modal === 'sponsor_expense') url = '/accounting/sponsor/expense';
       else if (modal === 'staff') url = '/accounting/staff';
-      await api[method](url, form);
+      await api.post(url, { ...form, ...(receiptId ? { receipt_id: receiptId } : {}) });
       toast('✅ 등록 완료');
-      setModal(null); setForm({});
-      if (modal === 'tx') { loadTransactions(); loadSummary(); }
+      setModal(null); setForm({}); clearModalReceipt();
+      if (modal === 'tx') { loadTransactions(); loadSummary(); loadPendingReceipts(); loadRecentReceipts(); }
       if (modal === 'sponsor_income' || modal === 'sponsor_expense') {
         api.get('/accounting/sponsor/income').then(r => setSponsorIncome(r.data.data || []));
         api.get('/accounting/sponsor/expense').then(r => setSponsorExpense(r.data.data || []));
@@ -220,6 +260,7 @@ export default function AccountingPage() {
     try {
       const fd = new FormData();
       fd.append('file', uploadFile);
+      if (uploadNote.trim()) fd.append('note', uploadNote.trim());
       const r = await api.post('/accounting/receipts/upload', fd, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
@@ -227,6 +268,7 @@ export default function AccountingPage() {
       setUploadResult({ ok: true, data: d });
       setUploadFile(null);
       setUploadPreview(null);
+      setUploadNote('');
       if (fileInputRef.current) fileInputRef.current.value = '';
       toast('✅ 영수증 저장 완료');
       loadRecentReceipts();
@@ -376,6 +418,17 @@ export default function AccountingPage() {
                 style={{ display: 'none' }}
               />
 
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 11, color: S.sub, marginBottom: 4 }}>메모 (용도/거래처 설명)</div>
+                <input
+                  type="text"
+                  placeholder="예: 현수막 제작비 - 홍길동인쇄소"
+                  value={uploadNote}
+                  onChange={e => setUploadNote(e.target.value)}
+                  style={inputStyle}
+                />
+              </div>
+
               {uploadFile && (
                 <div style={{ fontSize: 11, color: S.sub, marginTop: 6, marginBottom: 6 }}>
                   📎 {uploadFile.name}
@@ -422,6 +475,72 @@ export default function AccountingPage() {
                 <div style={{ marginTop: 8, fontSize: 11, color: S.sub }}>저장 완료 (OCR 분석 없음)</div>
               )}
             </Card>
+
+            {/* 미처리 영수증 (회계담당/관리자) */}
+            {isAccountant && pendingReceipts.length > 0 && (
+              <Card style={{ border: '1px solid #ffa50244', background: '#1a1500' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                  <div style={{ fontSize: 13, fontWeight: 700, color: S.yellow }}>
+                    🧾 미처리 영수증 ({pendingReceipts.length}건)
+                  </div>
+                  <div style={{ fontSize: 10, color: S.muted }}>탭하여 거래 등록</div>
+                </div>
+                {pendingReceipts.map(r => (
+                  <div key={r.id} style={{
+                    display: 'flex', alignItems: 'flex-start', gap: 10,
+                    padding: '10px 0', borderBottom: `1px solid ${S.surface2}`
+                  }}>
+                    {/* 썸네일 */}
+                    <div style={{ flexShrink: 0 }}>
+                      {(r.gcs_url || r.image_url) ? (
+                        <img
+                          src={r.gcs_url || r.image_url}
+                          alt="영수증"
+                          style={{ width: 52, height: 52, objectFit: 'cover', borderRadius: 6, background: S.surface2 }}
+                          onError={e => { e.target.style.display='none'; }}
+                        />
+                      ) : (
+                        <div style={{ width: 52, height: 52, borderRadius: 6, background: S.surface2, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22 }}>🧾</div>
+                      )}
+                    </div>
+                    {/* 정보 */}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: S.text, marginBottom: 2 }}>
+                        {r.note || r.ocr_vendor || '설명 없음'}
+                      </div>
+                      <div style={{ fontSize: 10, color: S.sub, marginBottom: 4 }}>
+                        {r.uploader_name || '알수없음'} · {r.uploaded_at ? new Date(r.uploaded_at).toLocaleDateString('ko-KR') : ''}
+                        {r.ocr_amount ? <span style={{ color: S.green, marginLeft: 4 }}>  {r.ocr_amount.toLocaleString()}원</span> : null}
+                        {r.ocr_vendor && r.note ? <span style={{ color: S.muted, marginLeft: 4 }}>({r.ocr_vendor})</span> : null}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 6 }}>
+                        {r.ocr_receipt_type && <Badge color={S.muted}>{r.ocr_receipt_type}</Badge>}
+                        {r.category_suggestion && <Badge color={S.accent}>{r.category_suggestion}</Badge>}
+                      </div>
+                      <button
+                        onClick={() => {
+                          setModal('tx');
+                          setForm({
+                            date: r.ocr_date || today,
+                            type: 'expense',
+                            cost_type: 'election_cost',
+                            category: r.category_suggestion || '',
+                            amount: r.ocr_amount || '',
+                            description: r.note || r.ocr_vendor || '',
+                            receipt_id: r.id,
+                          });
+                        }}
+                        style={{
+                          padding: '5px 14px', background: S.accent, color: '#fff',
+                          border: 'none', borderRadius: 6, fontSize: 11, fontWeight: 700,
+                          cursor: 'pointer', fontFamily: "'Noto Sans KR',sans-serif"
+                        }}
+                      >+ 거래 등록</button>
+                    </div>
+                  </div>
+                ))}
+              </Card>
+            )}
 
             {/* 최근 업로드 영수증 */}
             {recentReceipts.length > 0 && (
@@ -741,6 +860,13 @@ export default function AccountingPage() {
                 <FormRow label="금액"><input type="number" placeholder="원" value={form.amount||''} onChange={e => setForm(f => ({...f,amount:parseInt(e.target.value)||0}))} style={inputStyle} /></FormRow>
                 <FormRow label="내용"><input type="text" placeholder="거래처/설명" value={form.description||''} onChange={e => setForm(f => ({...f,description:e.target.value}))} style={inputStyle} /></FormRow>
                 <FormRow label="비고"><input type="text" value={form.note||''} onChange={e => setForm(f => ({...f,note:e.target.value}))} style={inputStyle} /></FormRow>
+                <ReceiptAttach
+                  preview={modalReceiptPreview}
+                  file={modalReceiptFile}
+                  inputRef={modalReceiptRef}
+                  onSelect={handleModalReceiptSelect}
+                  onClear={clearModalReceipt}
+                />
               </div>
             )}
 
@@ -769,6 +895,13 @@ export default function AccountingPage() {
                 </FormRow>
                 <FormRow label="금액"><input type="number" placeholder="원" value={form.amount||''} onChange={e => setForm(f => ({...f,amount:parseInt(e.target.value)||0}))} style={inputStyle} /></FormRow>
                 <FormRow label="비고"><input type="text" value={form.note||''} onChange={e => setForm(f => ({...f,note:e.target.value}))} style={inputStyle} /></FormRow>
+                <ReceiptAttach
+                  preview={modalReceiptPreview}
+                  file={modalReceiptFile}
+                  inputRef={modalReceiptRef}
+                  onSelect={handleModalReceiptSelect}
+                  onClear={clearModalReceipt}
+                />
               </div>
             )}
 
@@ -796,7 +929,7 @@ export default function AccountingPage() {
             )}
 
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-              <button onClick={() => { setModal(null); setForm({}); }} style={{
+              <button onClick={() => { setModal(null); setForm({}); clearModalReceipt(); }} style={{
                 flex: 1, padding: '11px 0', background: S.surface2, color: S.sub,
                 border: S.border, borderRadius: 10, fontSize: 13, cursor: 'pointer'
               }}>취소</button>
@@ -828,6 +961,36 @@ const inputStyle = {
   borderRadius: 8, padding: '9px 12px', color: '#e8edf5',
   fontSize: 13, fontFamily: "'Noto Sans KR',sans-serif", outline: 'none', boxSizing: 'border-box'
 };
+
+function ReceiptAttach({ preview, file, inputRef, onSelect, onClear }) {
+  return (
+    <div>
+      <div style={{ fontSize: 11, color: '#8896b3', marginBottom: 4 }}>영수증 첨부 (선택)</div>
+      {preview ? (
+        <div style={{ position: 'relative' }}>
+          <img src={preview} alt="영수증"
+            style={{ width: '100%', maxHeight: 160, objectFit: 'contain', borderRadius: 8, background: '#1a2236', display: 'block' }} />
+          <button onClick={onClear} style={{
+            position: 'absolute', top: 6, right: 6,
+            background: 'rgba(0,0,0,0.65)', color: '#fff', border: 'none',
+            borderRadius: '50%', width: 26, height: 26, cursor: 'pointer',
+            fontSize: 14, lineHeight: 1, display: 'flex', alignItems: 'center', justifyContent: 'center'
+          }}>✕</button>
+          <div style={{ fontSize: 10, color: '#8896b3', marginTop: 4 }}>📎 {file?.name}</div>
+        </div>
+      ) : (
+        <div onClick={() => inputRef.current?.click()} style={{
+          border: '2px dashed #2a3a55', borderRadius: 8, padding: '14px 0',
+          textAlign: 'center', cursor: 'pointer', color: '#4a5878', fontSize: 12
+        }}>
+          📷 탭하여 영수증 사진 첨부
+        </div>
+      )}
+      <input ref={inputRef} type="file" accept="image/*,.heic" capture="environment"
+        onChange={onSelect} style={{ display: 'none' }} />
+    </div>
+  );
+}
 
 function FormRow({ label, children }) {
   return (

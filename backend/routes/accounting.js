@@ -118,6 +118,11 @@ router.post('/transactions', requireAccountant, async (req, res) => {
        d.account_verified ?? false, d.approved ?? false, d.reimbursable,
        d.note, req.user.id]
     );
+    // 영수증 상태 PROCESSED로 업데이트
+    if (d.receipt_id) {
+      db.run(`UPDATE acct_receipts SET status='PROCESSED' WHERE id=$1`, [d.receipt_id]).catch(() => {});
+    }
+
     // Google Sheets 자동 동기화 (fire-and-forget)
     toSheets('수입지출장부', [
       '', row.date,
@@ -225,16 +230,17 @@ router.post('/receipts/upload', requireAccountingView, upload.single('file'), as
 
   // 항상 DB 저장 (OCR 성공/실패 무관)
   try {
+    const uploaderNote = req.body?.note || null;
     const row = await db.get(
       `INSERT INTO acct_receipts
          (image_path,image_url,ocr_raw,ocr_date,ocr_amount,ocr_vendor,ocr_vendor_reg_no,
-          ocr_receipt_type,ocr_confidence,category_suggestion,reimbursable_guess,uploaded_by,uploaded_at)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW()) RETURNING *`,
+          ocr_receipt_type,ocr_confidence,category_suggestion,reimbursable_guess,note,uploaded_by,uploaded_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW()) RETURNING *`,
       [finalPath, imageUrl, rawText || null, parsed.date || null, parsed.amount || null,
        parsed.vendor || null, parsed.vendor_reg_no || null,
        parsed.receipt_type || null, parsed.confidence || null,
        parsed.category_suggestion || null, parsed.reimbursable ?? null,
-       req.user.id]
+       uploaderNote, req.user.id]
     );
 
     // GCS 백업 — 비동기 fire-and-forget (실패해도 응답에 영향 없음)
@@ -262,6 +268,22 @@ router.get('/receipts', requireAccountingView, async (req, res) => {
       `SELECT r.*, u.name AS uploader_name FROM acct_receipts r
        LEFT JOIN users u ON r.uploaded_by = u.id
        ORDER BY r.uploaded_at DESC LIMIT 100`
+    );
+    res.json({ success: true, data: rows });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── 미처리 영수증 목록 (회계담당+관리자) ────────────────
+router.get('/receipts/pending', requireAccountant, async (req, res) => {
+  try {
+    const rows = await db.all(
+      `SELECT r.*, u.name AS uploader_name
+       FROM acct_receipts r
+       LEFT JOIN users u ON r.uploaded_by = u.id
+       WHERE r.status = 'PENDING'
+         AND r.id NOT IN (SELECT receipt_id FROM acct_transactions WHERE receipt_id IS NOT NULL)
+       ORDER BY r.uploaded_at DESC
+       LIMIT 100`
     );
     res.json({ success: true, data: rows });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
