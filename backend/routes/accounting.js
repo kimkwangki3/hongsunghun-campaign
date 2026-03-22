@@ -559,6 +559,22 @@ router.post('/sheets/sync', requireAccountant, async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+// ── 테스트 영수증 삽입 (admin 전용, 개발/테스트용) ──────
+router.post('/test/seed-receipt', requireAdmin, async (req, res) => {
+  try {
+    const { v4: uuidv4 } = require('uuid');
+    const rows = await db.all(`
+      INSERT INTO acct_receipts (image_path, image_url, ocr_date, ocr_amount, ocr_vendor, ocr_vendor_reg_no, ocr_receipt_type, ocr_confidence, category_suggestion, reimbursable_guess, status, uploaded_by, note)
+      VALUES
+        ('/receipts/test1.jpg', null, '2026-03-20', 220000, '홍캠프인쇄소', '123-45-67890', '세금계산서', 0.92, '홍보물제작비', true, 'PENDING', $1, '현수막 500부 제작'),
+        ('/receipts/test2.jpg', null, '2026-03-21', 85000,  '캠프식당',     '234-56-78901', '간이영수증',   0.85, '식비',         true, 'PENDING', $1, '캠프 회의 식사비'),
+        ('/receipts/test3.jpg', null, '2026-03-22', 45000,  'GS25편의점',   '345-67-89012', '신용카드매출전표', 0.90, '다과음료비',  true, 'PENDING', $1, '다과 구매')
+      RETURNING *
+    `, [req.user.id]);
+    res.json({ success: true, data: { inserted: rows.length, message: `테스트 영수증 ${rows.length}건 추가됨` } });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 // ── 시트 URL 반환 ──────────────────────────────────────
 router.get('/sheets/url', requireAccountant, (req, res) => {
   const id = process.env.GOOGLE_SHEET_ID;
