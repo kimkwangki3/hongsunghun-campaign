@@ -643,10 +643,24 @@ export default function AccountingPage() {
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
               <div style={{ fontSize: 14, fontWeight: 700 }}>🧾 미처리 영수증</div>
-              <button onClick={loadPendingReceipts} style={{
-                background: S.surface2, color: S.sub, border: S.border,
-                borderRadius: 8, padding: '5px 12px', fontSize: 11, cursor: 'pointer'
-              }}>새로고침</button>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {user?.role === 'admin' && (
+                  <button onClick={async () => {
+                    try {
+                      const r = await api.post('/accounting/test/seed-receipt');
+                      toast(`✅ ${r.data.data.message}`);
+                      loadPendingReceipts();
+                    } catch (e) { toast(`❌ ${e.response?.data?.message || '실패'}`); }
+                  }} style={{
+                    background: '#2a1a00', color: S.yellow, border: '1px solid #ffa50244',
+                    borderRadius: 8, padding: '5px 12px', fontSize: 11, cursor: 'pointer'
+                  }}>🧪 테스트 데이터</button>
+                )}
+                <button onClick={loadPendingReceipts} style={{
+                  background: S.surface2, color: S.sub, border: S.border,
+                  borderRadius: 8, padding: '5px 12px', fontSize: 11, cursor: 'pointer'
+                }}>새로고침</button>
+              </div>
             </div>
 
             {pendingReceipts.length === 0 ? (
