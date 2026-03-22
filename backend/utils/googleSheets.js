@@ -20,7 +20,7 @@ function getAuth() {
     process.env.FIREBASE_CLIENT_EMAIL,
     null,
     process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-    ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
+    ['https://www.googleapis.com/auth/spreadsheets']
   );
 }
 
@@ -49,14 +49,16 @@ async function appendRow(sheetName, values) {
   }
 }
 
-// 서비스 계정이 직접 새 스프레드시트 생성
+// 서비스 계정이 직접 새 스프레드시트 생성 (spreadsheets 스코프만 사용)
 async function createNewSpreadsheet() {
-  const auth = getAuth();
-  if (!auth) throw new Error('Firebase 서비스 계정 미설정');
-  const drive = google.drive({ version: 'v3', auth });
+  const auth = new google.auth.JWT(
+    process.env.FIREBASE_CLIENT_EMAIL,
+    null,
+    process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
+    ['https://www.googleapis.com/auth/spreadsheets']
+  );
   const sheets = google.sheets({ version: 'v4', auth });
 
-  // 새 스프레드시트 생성
   const created = await sheets.spreadsheets.create({
     requestBody: {
       properties: { title: '홍성훈캠프 선거회계장부' },
@@ -64,18 +66,10 @@ async function createNewSpreadsheet() {
     }
   });
   const spreadsheetId = created.data.spreadsheetId;
-  const url = created.data.spreadsheetUrl;
-
-  // 기존 사용자에게 편집자 권한 공유 (선택적: 이미 공유된 이메일)
-  try {
-    await drive.permissions.create({
-      fileId: spreadsheetId,
-      requestBody: { role: 'writer', type: 'user', emailAddress: 'rlaehdgo0301@gmail.com' },
-      fields: 'id',
-    });
-  } catch (e) { console.error('공유 설정 오류:', e.message); }
-
-  console.log('✅ 새 스프레드시트 생성:', spreadsheetId, url);
+  const url = `https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit`;
+  console.log('✅ 새 스프레드시트 생성 완료');
+  console.log('🆕 새 GOOGLE_SHEET_ID:', spreadsheetId);
+  console.log('🔗 URL:', url);
   return { spreadsheetId, url };
 }
 
