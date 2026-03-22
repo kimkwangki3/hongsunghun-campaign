@@ -111,6 +111,119 @@ async function initDB() {
   // cleared_at 컬럼 마이그레이션 (없으면 추가)
   await db.run(`ALTER TABLE rooms ADD COLUMN IF NOT EXISTS cleared_at INTEGER DEFAULT 0`);
 
+  // ── 회계 테이블 ──────────────────────────────────────────────────────
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS acct_receipts (
+      id                SERIAL PRIMARY KEY,
+      image_path        TEXT,
+      image_url         TEXT,
+      ocr_raw           TEXT,
+      ocr_date          DATE,
+      ocr_amount        INTEGER,
+      ocr_vendor        TEXT,
+      ocr_vendor_reg_no VARCHAR(20),
+      ocr_receipt_type  VARCHAR(30),
+      ocr_confidence    DECIMAL(3,2),
+      category_suggestion VARCHAR(50),
+      reimbursable_guess  BOOLEAN,
+      status            VARCHAR(20) DEFAULT 'PENDING',
+      uploaded_by       TEXT REFERENCES users(id),
+      uploaded_at       TIMESTAMP DEFAULT NOW(),
+      created_at        TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS acct_transactions (
+      id               SERIAL PRIMARY KEY,
+      date             DATE NOT NULL,
+      amount           INTEGER NOT NULL,
+      type             VARCHAR(10) NOT NULL CHECK (type IN ('income','expense')),
+      description      TEXT,
+      account_type     VARCHAR(30),
+      cost_type        VARCHAR(20) CHECK (cost_type IN ('election_cost','non_election_cost')),
+      category         VARCHAR(50),
+      receipt_no       VARCHAR(30),
+      receipt_id       INTEGER REFERENCES acct_receipts(id),
+      account_verified BOOLEAN DEFAULT FALSE,
+      approved         BOOLEAN DEFAULT FALSE,
+      reimbursable     BOOLEAN,
+      source           VARCHAR(20) DEFAULT 'manual',
+      sms_id           INTEGER,
+      note             TEXT,
+      created_by       TEXT REFERENCES users(id),
+      created_at       TIMESTAMP DEFAULT NOW(),
+      updated_at       TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_acct_tx_date ON acct_transactions(date)`);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_acct_tx_type ON acct_transactions(type)`);
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS acct_sms_raw (
+      id             SERIAL PRIMARY KEY,
+      raw_text       TEXT NOT NULL,
+      hash           VARCHAR(64) NOT NULL UNIQUE,
+      received_at    TIMESTAMP DEFAULT NOW(),
+      source         VARCHAR(20) DEFAULT 'manual',
+      status         VARCHAR(20) DEFAULT 'PENDING',
+      skip_reason    VARCHAR(100),
+      processed_at   TIMESTAMP,
+      transaction_id INTEGER REFERENCES acct_transactions(id),
+      created_at     TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_acct_sms_status ON acct_sms_raw(status)`);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_acct_sms_hash   ON acct_sms_raw(hash)`);
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS acct_sponsor_income (
+      id               SERIAL PRIMARY KEY,
+      date             DATE NOT NULL,
+      amount           INTEGER NOT NULL,
+      income_type      VARCHAR(20) NOT NULL DEFAULT 'named',
+      donor_name       TEXT,
+      donor_dob        DATE,
+      donor_address    TEXT,
+      donor_occupation TEXT,
+      donor_phone      VARCHAR(20),
+      receipt_no       VARCHAR(30),
+      source           VARCHAR(20) DEFAULT 'manual',
+      note             TEXT,
+      created_at       TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS acct_sponsor_expense (
+      id          SERIAL PRIMARY KEY,
+      date        DATE NOT NULL,
+      amount      INTEGER NOT NULL,
+      category    VARCHAR(30) NOT NULL,
+      receipt_no  VARCHAR(30),
+      receipt_id  INTEGER REFERENCES acct_receipts(id),
+      source      VARCHAR(20) DEFAULT 'manual',
+      note        TEXT,
+      created_at  TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS acct_staff_payments (
+      id                  SERIAL PRIMARY KEY,
+      payment_date        DATE NOT NULL,
+      staff_role          VARCHAR(20) NOT NULL,
+      staff_name          TEXT NOT NULL,
+      staff_account       TEXT,
+      allowance           INTEGER DEFAULT 0,
+      daily_expense       INTEGER DEFAULT 20000,
+      meal_provided       INTEGER DEFAULT 0,
+      transport_deduction INTEGER DEFAULT 0,
+      total_actual        INTEGER,
+      receipt_no          VARCHAR(30),
+      transaction_id      INTEGER REFERENCES acct_transactions(id),
+      approved            BOOLEAN DEFAULT FALSE,
+      note                TEXT,
+      created_at          TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  // ─────────────────────────────────────────────────────────────────────
+
   // 성능 인덱스 (없으면 생성)
   await db.run(`CREATE INDEX IF NOT EXISTS idx_room_members_user ON room_members(user_id)`);
   await db.run(`CREATE INDEX IF NOT EXISTS idx_room_members_room ON room_members(room_id)`);
