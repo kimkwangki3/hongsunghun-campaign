@@ -78,7 +78,7 @@ async function setupSheets() {
   const client = getClient();
   if (!client) throw new Error('Firebase 서비스 계정 미설정 (FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY)');
 
-  let spreadsheetId = process.env.GOOGLE_SHEET_ID;
+  let spreadsheetId = (process.env.GOOGLE_SHEET_ID || '').trim();
 
   // 기존 시트 접근 시도, 실패하면 새로 생성
   if (spreadsheetId) {
