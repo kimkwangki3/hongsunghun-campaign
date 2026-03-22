@@ -80,6 +80,7 @@ export default function AccountingPage() {
   const [modalReceiptFile, setModalReceiptFile] = useState(null);
   const [modalReceiptPreview, setModalReceiptPreview] = useState(null);
   const modalReceiptRef = useRef(null);
+  const [modalReceiptUrl, setModalReceiptUrl] = useState(null);
   const [pendingReceipts, setPendingReceipts] = useState([]);
   const [uploadNote, setUploadNote] = useState('');
   const [allReceipts, setAllReceipts] = useState([]);
@@ -216,7 +217,7 @@ export default function AccountingPage() {
       else if (modal === 'staff') url = '/accounting/staff';
       await api.post(url, { ...form, ...(receiptId ? { receipt_id: receiptId } : {}) });
       toast('✅ 등록 완료');
-      setModal(null); setForm({}); clearModalReceipt();
+      setModal(null); setForm({}); clearModalReceipt(); setModalReceiptUrl(null);
       if (modal === 'tx') { loadTransactions(); loadSummary(); loadPendingReceipts(); loadRecentReceipts(); }
       if (modal === 'sponsor_income' || modal === 'sponsor_expense') {
         api.get('/accounting/sponsor/income').then(r => setSponsorIncome(r.data.data || []));
@@ -522,6 +523,7 @@ export default function AccountingPage() {
                       <button
                         onClick={() => {
                           setModal('tx');
+                          setModalReceiptUrl(r.gcs_url || r.image_url || null);
                           setForm({
                             date: r.ocr_date || today,
                             type: 'expense',
@@ -530,6 +532,7 @@ export default function AccountingPage() {
                             amount: r.ocr_amount || '',
                             description: r.note || r.ocr_vendor || '',
                             receipt_id: r.id,
+                            reimbursable: r.reimbursable_guess ?? true,
                           });
                         }}
                         style={{
@@ -844,13 +847,27 @@ export default function AccountingPage() {
                 <FormRow label="금액"><input type="number" placeholder="원" value={form.amount||''} onChange={e => setForm(f => ({...f,amount:parseInt(e.target.value)||0}))} style={inputStyle} /></FormRow>
                 <FormRow label="내용"><input type="text" placeholder="거래처/설명" value={form.description||''} onChange={e => setForm(f => ({...f,description:e.target.value}))} style={inputStyle} /></FormRow>
                 <FormRow label="비고"><input type="text" value={form.note||''} onChange={e => setForm(f => ({...f,note:e.target.value}))} style={inputStyle} /></FormRow>
-                <ReceiptAttach
-                  preview={modalReceiptPreview}
-                  file={modalReceiptFile}
-                  inputRef={modalReceiptRef}
-                  onSelect={handleModalReceiptSelect}
-                  onClear={clearModalReceipt}
-                />
+                {/* 연결된 영수증 이미지 (기존 업로드) or 새 첨부 */}
+                {modalReceiptUrl ? (
+                  <div>
+                    <div style={{ fontSize: 11, color: '#8896b3', marginBottom: 4 }}>연결된 영수증</div>
+                    <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', background: '#1a2236' }}>
+                      <img src={modalReceiptUrl} alt="영수증"
+                        style={{ width: '100%', maxHeight: 180, objectFit: 'contain', display: 'block' }} />
+                      <div style={{ position: 'absolute', top: 6, left: 6, background: 'rgba(16,185,129,0.9)', color: '#fff', fontSize: 10, fontWeight: 700, borderRadius: 4, padding: '2px 7px' }}>
+                        ✓ 영수증 연결됨
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <ReceiptAttach
+                    preview={modalReceiptPreview}
+                    file={modalReceiptFile}
+                    inputRef={modalReceiptRef}
+                    onSelect={handleModalReceiptSelect}
+                    onClear={clearModalReceipt}
+                  />
+                )}
               </div>
             )}
 
@@ -913,7 +930,7 @@ export default function AccountingPage() {
             )}
 
             <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-              <button onClick={() => { setModal(null); setForm({}); clearModalReceipt(); }} style={{
+              <button onClick={() => { setModal(null); setForm({}); clearModalReceipt(); setModalReceiptUrl(null); }} style={{
                 flex: 1, padding: '11px 0', background: S.surface2, color: S.sub,
                 border: S.border, borderRadius: 10, fontSize: 13, cursor: 'pointer'
               }}>취소</button>

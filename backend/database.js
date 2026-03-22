@@ -175,6 +175,8 @@ async function initDB() {
   // gcs_url 컬럼 마이그레이션 (기존 DB 대응)
   await db.run(`ALTER TABLE acct_receipts ADD COLUMN IF NOT EXISTS gcs_url TEXT`);
   await db.run(`ALTER TABLE acct_receipts ADD COLUMN IF NOT EXISTS note TEXT`);
+  await db.run(`ALTER TABLE acct_receipts ADD COLUMN IF NOT EXISTS processed_by TEXT REFERENCES users(id)`);
+  await db.run(`ALTER TABLE acct_receipts ADD COLUMN IF NOT EXISTS processed_at TIMESTAMP`);
   await db.run(`CREATE INDEX IF NOT EXISTS idx_acct_sms_status ON acct_sms_raw(status)`);
   await db.run(`CREATE INDEX IF NOT EXISTS idx_acct_sms_hash   ON acct_sms_raw(hash)`);
   await db.run(`

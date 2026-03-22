@@ -26,6 +26,8 @@ export default function HomePage() {
   const [rooms, setRooms] = useState([]);
   const [schedules, setSchedules] = useState([]);
   const [loading, setLoading] = useState(true);
+  const isAccountant = ['admin', 'accountant'].includes(user?.role);
+  const [pendingReceiptCount, setPendingReceiptCount] = useState(0);
 
   const fetchRooms = useCallback(() => {
     api.get('/chat/rooms')
@@ -52,6 +54,12 @@ export default function HomePage() {
           .catch(() => setSchedules([]));
       })
       .finally(finish);
+
+    if (['admin', 'accountant'].includes(user?.role)) {
+      api.get('/accounting/receipts/pending-count')
+        .then(r => setPendingReceiptCount(r.data.data?.count || 0))
+        .catch(() => {});
+    }
   }, []);
 
   // 탭 전환으로 돌아올 때 재조회 (채팅방 읽고 홈 돌아오면 0으로 갱신)
@@ -157,6 +165,24 @@ export default function HomePage() {
           </button>
         )}
       </Section>
+
+      {/* 미처리 영수증 (회계담당/관리자) */}
+      {isAccountant && pendingReceiptCount > 0 && (
+        <Section title="미처리 영수증" badge={pendingReceiptCount}>
+          <button onClick={() => navigate('/accounting')} style={itemStyle}>
+            <div style={{ ...avatarStyle, background: 'rgba(255,165,0,0.12)', border: '1.5px solid rgba(255,165,0,0.35)', fontSize: 20 }}>
+              🧾
+            </div>
+            <div style={{ flex: 1, minWidth: 0, textAlign: 'left' }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: '#ffa502' }}>
+                처리 대기 {pendingReceiptCount}건
+              </div>
+              <div style={{ fontSize: 12, color: '#8080b0' }}>탭하여 회계 페이지에서 처리하기</div>
+            </div>
+            <span style={{ fontSize: 13, color: '#404068' }}>›</span>
+          </button>
+        </Section>
+      )}
 
       {/* 다가오는 일정 */}
       <Section title="다가오는 일정">

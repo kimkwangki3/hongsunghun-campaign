@@ -8,6 +8,7 @@ const { db } = require('../database');
 const { requireAccountant, requireAccountingView } = require('../middleware/auth');
 const { processBatchSms, getPendingCount } = require('../utils/acctSmsService');
 const { backupToGCS, downloadGCSBuffer } = require('../utils/gcsBackup');
+const { sendPush } = require('../utils/fcm');
 const { appendRow, setupSheets, syncAll } = require('../utils/googleSheets');
 
 const LIMIT = 52289440; // 순천시 제7선거구 제한액
@@ -118,9 +119,12 @@ router.post('/transactions', requireAccountant, async (req, res) => {
        d.account_verified ?? false, d.approved ?? false, d.reimbursable,
        d.note, req.user.id]
     );
-    // 영수증 상태 PROCESSED로 업데이트
+    // 영수증 상태 PROCESSED + 처리자 기록
     if (d.receipt_id) {
-      db.run(`UPDATE acct_receipts SET status='PROCESSED' WHERE id=$1`, [d.receipt_id]).catch(() => {});
+      db.run(
+        `UPDATE acct_receipts SET status='PROCESSED', processed_by=$1, processed_at=NOW() WHERE id=$2`,
+        [req.user.id, d.receipt_id]
+      ).catch(() => {});
     }
 
     // Google Sheets 자동 동기화 (fire-and-forget)
@@ -254,6 +258,24 @@ router.post('/receipts/upload', requireAccountingView, upload.single('file'), as
 
     // Google Sheets 영수증목록 동기화
     toSheets('영수증목록', ['', new Date().toLocaleDateString('ko-KR'), row.ocr_date||'', row.ocr_vendor||'', row.ocr_vendor_reg_no||'', row.ocr_receipt_type||'', row.ocr_amount||'', row.category_suggestion||'', req.user.name||req.user.id, '']);
+
+    // 회계담당자 + 관리자에게 FCM 푸시 알림
+    db.all(
+      `SELECT dt.token FROM users u
+       JOIN device_tokens dt ON dt.user_id = u.id
+       WHERE u.role IN ('admin','accountant') AND u.id != $1`,
+      [req.user.id]
+    ).then(tokenRows => {
+      const tokens = tokenRows.map(t => t.token).filter(Boolean);
+      if (tokens.length > 0) {
+        sendPush(tokens, {
+          title: '🧾 새 영수증 업로드',
+          body: `${req.user.name || '캠프원'}님 업로드${row.note ? ' — ' + row.note : ''}${row.ocr_amount ? ' · ' + Number(row.ocr_amount).toLocaleString() + '원' : ''}`,
+          data: { type: 'receipt', receiptId: String(row.id) }
+        });
+      }
+    }).catch(() => {});
+
     res.json({ success: true, data: row });
   } catch (e) {
     console.error('영수증 DB 저장 오류:', e);
@@ -277,15 +299,28 @@ router.get('/receipts', requireAccountingView, async (req, res) => {
 router.get('/receipts/pending', requireAccountant, async (req, res) => {
   try {
     const rows = await db.all(
-      `SELECT r.*, u.name AS uploader_name
+      `SELECT r.*, u.name AS uploader_name, p.name AS processor_name
        FROM acct_receipts r
        LEFT JOIN users u ON r.uploaded_by = u.id
+       LEFT JOIN users p ON r.processed_by = p.id
        WHERE r.status = 'PENDING'
          AND r.id NOT IN (SELECT receipt_id FROM acct_transactions WHERE receipt_id IS NOT NULL)
        ORDER BY r.uploaded_at DESC
        LIMIT 100`
     );
     res.json({ success: true, data: rows });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── 미처리 영수증 수 (회계담당+관리자, 홈화면용) ──────────────
+router.get('/receipts/pending-count', requireAccountant, async (req, res) => {
+  try {
+    const r = await db.get(
+      `SELECT COUNT(*) cnt FROM acct_receipts
+       WHERE status = 'PENDING'
+         AND id NOT IN (SELECT receipt_id FROM acct_transactions WHERE receipt_id IS NOT NULL)`
+    );
+    res.json({ success: true, data: { count: parseInt(r?.cnt || 0) } });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
