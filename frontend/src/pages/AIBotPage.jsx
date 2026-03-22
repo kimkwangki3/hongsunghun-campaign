@@ -24,19 +24,6 @@ const QUICK = [
   { icon:'💵', label:'비용제한액', q:'순천시 제7선거구 선거비용제한액과 초과 시 처벌은?' },
 ];
 
-const TIMELINE = [
-  { date:'02.20', text:'예비후보자 등록 개시', type:'done' },
-  { date:'05.09', text:'세대주명단 신청 마감', type:'soon' },
-  { date:'05.14~15', text:'후보자 등록', type:'soon' },
-  { date:'05.18', text:'홍보물 발송 마감', type:'soon' },
-  { date:'05.21', text:'선거운동 기간 개시', type:'key' },
-  { date:'05.29~30', text:'사전투표', type:'key' },
-  { date:'06.03', text:'🗳 선거일', type:'elect' },
-  { date:'06.15', text:'보전 청구 마감', type:'after' },
-  { date:'07.03', text:'회계보고서 제출', type:'after' },
-];
-
-const DOT_COLOR = { done:'#4a5878', soon:'#ffa502', key:'#1e6bff', elect:'#00c9a7', after:'#4a5878' };
 
 function renderText(text) {
   return text
@@ -46,7 +33,7 @@ function renderText(text) {
 }
 
 export default function AIBotPage() {
-  const [tab, setTab] = useState('chat'); // chat | timeline | calc
+  const [tab, setTab] = useState('chat'); // chat | calc
   const [messages, setMessages] = useState([{
     role:'assistant',
     content:`안녕하세요! **홍성훈 캠프 AI 법무봇**입니다.\n\n순천시 제7선거구 기준으로 **선거법·회계처리·정치자금**에 관한 질문에 답변드립니다.\n\n아래 빠른 질문을 눌러보거나 직접 질문해 주세요.`
@@ -127,7 +114,7 @@ export default function AIBotPage() {
 
         {/* 탭 */}
         <div style={{ display:'flex', gap:6 }}>
-          {[['chat','💬 법무봇'], ['timeline','📅 일정'], ['calc','💵 비용계산']].map(([t,l]) => (
+          {[['chat','💬 법무봇'], ['calc','💵 비용계산']].map(([t,l]) => (
             <button key={t} onClick={() => setTab(t)} style={{
               flex:1, padding:'6px 0', fontSize:11, fontWeight:700,
               background: tab===t ? 'linear-gradient(135deg,#1e6bff,#0047cc)' : '#1a2236',
@@ -251,34 +238,6 @@ export default function AIBotPage() {
             </div>
           </div>
         </>
-      )}
-
-      {/* ── 일정 탭 ── */}
-      {tab === 'timeline' && (
-        <div style={{ flex:1, overflowY:'auto', padding:16 }}>
-          <div style={{ fontSize:13, fontWeight:700, color:'#e8edf5', marginBottom:12 }}>📅 제9회 지방선거 핵심 일정</div>
-          {TIMELINE.map((item, i) => (
-            <div key={i} style={{
-              display:'flex', gap:12, padding:'10px 0',
-              borderBottom:'1px solid #1e2d45', alignItems:'flex-start'
-            }}>
-              <div style={{
-                width:8, height:8, borderRadius:'50%', marginTop:5, flexShrink:0,
-                background: DOT_COLOR[item.type],
-                boxShadow: item.type==='elect' ? '0 0 6px #00c9a7' : 'none'
-              }}/>
-              <div style={{ flex:1 }}>
-                <div style={{ fontSize:11, color:'#4a5878' }}>{item.date}</div>
-                <div style={{
-                  fontSize:13, marginTop:2,
-                  color: item.type==='elect' ? '#00c9a7' : item.type==='key' ? '#e8edf5' : '#8896b3',
-                  fontWeight: ['key','elect'].includes(item.type) ? 700 : 400
-                }}>{item.text}</div>
-              </div>
-            </div>
-          ))}
-          <div style={{ height:20 }}/>
-        </div>
       )}
 
       {/* ── 비용계산 탭 ── */}
