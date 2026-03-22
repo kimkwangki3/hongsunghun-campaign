@@ -232,6 +232,7 @@ app.use('/api/v1/auth', require('./routes/auth'));
 app.use('/api/v1/chat', verifyToken, require('./routes/chat'));
 app.use('/api/v1/schedule', verifyToken, require('./routes/schedule'));
 app.use('/api/v1/notification', verifyToken, require('./routes/notification'));
+app.use('/api/v1/ai', verifyToken, require('./routes/ai'));
 
 // Health check
 app.get('/health', (_, res) => res.json({ status: 'ok', time: new Date() }));

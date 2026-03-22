@@ -213,7 +213,7 @@ frontend/src/pages/ScheduleAddPage.jsx
 
 ### Step 4. PWA + 알림
 ```
-frontend/vite.config.js (PWA 플러그인)
+frontend/vite.config.jsㅁㄴ (PWA 플러그인)
 pwa/manifest.json
 public/firebase-messaging-sw.js
 frontend/src/hooks/useNotification.js

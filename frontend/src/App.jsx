@@ -13,6 +13,7 @@ const ScheduleAddPage = lazy(() => import('./pages/ScheduleAddPage'));
 const DMListPage      = lazy(() => import('./pages/DMListPage'));
 const AdminPage       = lazy(() => import('./pages/AdminPage'));
 const MembersAdminPage = lazy(() => import('./pages/MembersAdminPage'));
+const AIBotPage       = lazy(() => import('./pages/AIBotPage'));
 
 function PageLoader() {
   return <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:'#818cf8' }}>로딩 중...</div>;
@@ -80,6 +81,7 @@ export default function App() {
           <Route path="schedule" element={<Suspense fallback={<PageLoader />}><SchedulePage /></Suspense>} />
           <Route path="schedule/add" element={<Suspense fallback={<PageLoader />}><ScheduleAddPage /></Suspense>} />
           <Route path="dm" element={<Suspense fallback={<PageLoader />}><DMListPage /></Suspense>} />
+          <Route path="aibot" element={<Suspense fallback={<PageLoader />}><AIBotPage /></Suspense>} />
           <Route path="admin" element={<Suspense fallback={<PageLoader />}><AdminPage /></Suspense>} />
           <Route path="admin/members" element={<Suspense fallback={<PageLoader />}><MembersAdminPage /></Suspense>} />
         </Route>
