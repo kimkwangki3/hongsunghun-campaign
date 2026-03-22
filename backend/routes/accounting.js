@@ -588,7 +588,7 @@ router.get('/sheets/diagnose', requireAdmin, async (req, res) => {
       process.env.FIREBASE_CLIENT_EMAIL,
       null,
       process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-      ['https://www.googleapis.com/auth/spreadsheets']
+      ['https://www.googleapis.com/auth/spreadsheets', 'https://www.googleapis.com/auth/drive']
     );
     const token = await auth.getAccessToken();
     result.auth = token.token ? '✅ 인증 토큰 획득 성공' : '❌ 토큰 없음';
