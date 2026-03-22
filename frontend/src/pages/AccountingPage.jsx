@@ -111,6 +111,8 @@ export default function AccountingPage() {
         d.spreadsheet || '',
         d.error ? '❌ 오류: ' + d.error : '',
         d.sheets ? '탭목록: ' + d.sheets.join(', ') : '',
+        d.writeTest || '',
+        d.addSheetTest || '',
       ].filter(Boolean).join('\n');
       alert('📊 구글 시트 진단 결과\n\n' + msg);
     } catch (e) {

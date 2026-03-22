@@ -602,6 +602,47 @@ router.get('/sheets/diagnose', requireAdmin, async (req, res) => {
     const meta = await sheets.spreadsheets.get({ spreadsheetId: (process.env.GOOGLE_SHEET_ID||'').trim() });
     result.spreadsheet = '✅ 스프레드시트 접근 성공: ' + meta.data.properties.title;
     result.sheets = meta.data.sheets.map(s => s.properties.title);
+
+    // 쓰기 테스트 - 기존 첫번째 탭에 테스트값 쓰기
+    const firstSheet = meta.data.sheets[0]?.properties?.title;
+    if (firstSheet) {
+      try {
+        await sheets.spreadsheets.values.update({
+          spreadsheetId: (process.env.GOOGLE_SHEET_ID||'').trim(),
+          range: `${firstSheet}!Z1`,
+          valueInputOption: 'RAW',
+          requestBody: { values: [['test_ok']] }
+        });
+        result.writeTest = '✅ 쓰기 성공 (' + firstSheet + '!Z1)';
+        // 테스트값 지우기
+        await sheets.spreadsheets.values.clear({
+          spreadsheetId: (process.env.GOOGLE_SHEET_ID||'').trim(),
+          range: `${firstSheet}!Z1`
+        });
+      } catch (e2) {
+        result.writeTest = '❌ 쓰기 실패: ' + e2.message;
+      }
+
+      // addSheet 테스트
+      try {
+        await sheets.spreadsheets.batchUpdate({
+          spreadsheetId: (process.env.GOOGLE_SHEET_ID||'').trim(),
+          requestBody: { requests: [{ addSheet: { properties: { title: '_test_sheet_' } } }] }
+        });
+        result.addSheetTest = '✅ 시트 추가 성공';
+        // 테스트 시트 삭제
+        const meta2 = await sheets.spreadsheets.get({ spreadsheetId: (process.env.GOOGLE_SHEET_ID||'').trim() });
+        const testSheetId = meta2.data.sheets.find(s => s.properties.title === '_test_sheet_')?.properties?.sheetId;
+        if (testSheetId !== undefined) {
+          await sheets.spreadsheets.batchUpdate({
+            spreadsheetId: (process.env.GOOGLE_SHEET_ID||'').trim(),
+            requestBody: { requests: [{ deleteSheet: { sheetId: testSheetId } }] }
+          });
+        }
+      } catch (e3) {
+        result.addSheetTest = '❌ 시트 추가 실패: ' + e3.message;
+      }
+    }
   } catch (e) {
     result.error = e.message;
     result.errorDetail = e.response?.data || null;
