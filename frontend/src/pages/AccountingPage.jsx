@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+
 import { api } from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 
@@ -60,12 +60,12 @@ const EXPENSE_CATEGORIES = {
   '기탁금':           ['선관위기탁금'],
   '비선거비용':       ['정치활동비', '기타비선거비용'],
 };
-const ALL_EXPENSE_CATS = Object.values(EXPENSE_CATEGORIES).flat();
+
 const ASSET_LOCATIONS = ['선거사무소 본소', '선거연락소 1', '선거연락소 2', '선거연락소 3', '기타'];
 
 export default function AccountingPage() {
   const user = useAuthStore(s => s.user);
-  const navigate = useNavigate();
+
   const isAccountant = ['admin', 'accountant'].includes(user?.role);
   const tabs = isAccountant ? TABS : ACCT_TABS;
 
@@ -102,6 +102,8 @@ export default function AccountingPage() {
   const [assets, setAssets] = useState([]);
   const [stickerTarget, setStickerTarget] = useState(null); // 스티커 인쇄 대상
   const [allReceipts, setAllReceipts] = useState([]);
+  const [assetReceiptSearch, setAssetReceiptSearch] = useState('');
+  const [assetReceiptOpen, setAssetReceiptOpen] = useState(false);
 
   const toast = (m) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
 
@@ -1106,7 +1108,12 @@ export default function AccountingPage() {
 
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
             {isAccountant && (
-              <button onClick={() => { setModal('asset'); setForm({ purchase_date: today, quantity: 1, status: '사용중', location: '선거사무소 본소' }); }} style={{
+              <button onClick={() => {
+                setModal('asset');
+                setForm({ purchase_date: today, quantity: 1, status: '사용중', location: '선거사무소 본소' });
+                setAssetReceiptSearch(''); setAssetReceiptOpen(false);
+                if (allReceipts.length === 0) api.get('/accounting/receipts/list').then(r => setAllReceipts(r.data.data || [])).catch(() => {});
+              }} style={{
                 flex: 1, padding: '10px 0', background: S.accent, color: '#fff',
                 border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer'
               }}>+ 비품 등록</button>
@@ -1190,6 +1197,72 @@ export default function AccountingPage() {
                   합계: <strong style={{ color: S.text }}>{((form.quantity||1) * (form.unit_price||0)).toLocaleString()}원</strong>
                 </div>
               )}
+              {/* ── 영수증 연동 ── */}
+              <div>
+                <div style={{ fontSize: 11, color: S.sub, marginBottom: 4 }}>영수증 연동 <span style={{ color: S.muted }}>(현금영수증·카드·SMS 포함)</span></div>
+                {form.receipt_id ? (
+                  <div style={{ background: '#0a2a0a', border: '1px solid #10b98144', borderRadius: 8, padding: '8px 12px', fontSize: 12, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ color: S.green }}>✅ 영수증 #{form.receipt_id} — {form._receiptLabel}</span>
+                    <button onClick={() => setForm(f => ({ ...f, receipt_id: null, _receiptLabel: null }))} style={{ background: 'none', border: 'none', color: S.red, cursor: 'pointer', fontSize: 12 }}>연결 해제</button>
+                  </div>
+                ) : (
+                  <div style={{ position: 'relative' }}>
+                    <input
+                      type="text"
+                      placeholder="업체명·금액·날짜로 검색 (예: 사무용가구, 50000)"
+                      value={assetReceiptSearch}
+                      onChange={e => { setAssetReceiptSearch(e.target.value); setAssetReceiptOpen(true); }}
+                      onFocus={() => setAssetReceiptOpen(true)}
+                      style={inputStyle}
+                    />
+                    {assetReceiptOpen && assetReceiptSearch.length > 0 && (() => {
+                      const q = assetReceiptSearch.toLowerCase();
+                      const filtered = allReceipts.filter(r =>
+                        (r.ocr_vendor||'').toLowerCase().includes(q) ||
+                        String(r.ocr_amount||'').includes(q) ||
+                        (r.ocr_date||'').includes(q) ||
+                        (r.source||'').toLowerCase().includes(q)
+                      );
+                      return (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, background: S.surface2, border: S.border, borderRadius: 8, zIndex: 200, maxHeight: 220, overflowY: 'auto', marginTop: 2 }}>
+                          {filtered.length === 0 ? (
+                            <div style={{ padding: 12, fontSize: 12, color: S.sub, textAlign: 'center' }}>검색 결과 없음</div>
+                          ) : filtered.slice(0, 20).map(r => (
+                            <div key={r.id}
+                              onClick={() => {
+                                const label = `${r.ocr_vendor||'업체미상'} ${Number(r.ocr_amount||0).toLocaleString()}원 (${r.ocr_date||''})`;
+                                setForm(f => ({
+                                  ...f,
+                                  receipt_id: r.id,
+                                  _receiptLabel: label,
+                                  vendor: f.vendor || r.ocr_vendor || '',
+                                  unit_price: f.unit_price || (r.ocr_amount ? parseInt(r.ocr_amount) : 0),
+                                  purchase_date: r.ocr_date || f.purchase_date,
+                                }));
+                                setAssetReceiptSearch('');
+                                setAssetReceiptOpen(false);
+                              }}
+                              style={{ padding: '9px 12px', fontSize: 12, cursor: 'pointer', borderBottom: '1px solid #1e2d45', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                              onMouseEnter={e => e.currentTarget.style.background = '#1e2d45'}
+                              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                            >
+                              <div>
+                                <span style={{ fontWeight: 700, color: S.text }}>{r.ocr_vendor||'업체미상'}</span>
+                                <span style={{ marginLeft: 6, fontSize: 11, color: S.sub, background: r.source === 'sms' ? '#1a2a3a' : '#1a2a1a', borderRadius: 4, padding: '1px 5px' }}>
+                                  {r.source === 'sms' ? '📱 SMS' : r.source === 'upload' ? '🧾 영수증' : '📄 ' + (r.source||'-')}
+                                </span>
+                                <div style={{ fontSize: 10, color: S.muted, marginTop: 1 }}>{r.ocr_date||r.uploaded_at?.slice(0,10)||''} · #{r.id}</div>
+                              </div>
+                              <div style={{ color: S.yellow, fontWeight: 700, flexShrink: 0, marginLeft: 8 }}>{Number(r.ocr_amount||0).toLocaleString()}원</div>
+                            </div>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+              </div>
+
               <FormRow label="구매처"><input type="text" placeholder="구매처/업체명" value={form.vendor||''} onChange={e => setForm(f => ({...f,vendor:e.target.value}))} style={inputStyle} /></FormRow>
               <FormRow label="비치장소">
                 <select value={form.location||'선거사무소 본소'} onChange={e => setForm(f => ({...f,location:e.target.value}))} style={inputStyle}>
