@@ -227,6 +227,29 @@ io.on('connection', async (socket) => {
 app.set('io', io);
 app.set('onlineUsers', onlineUsers);
 
+// ── SMS 실시간 감시 (60초마다 미처리 SMS 체크 → 회계담당에게 소켓 알림) ──
+let lastSmsPendingCount = 0;
+setInterval(async () => {
+  try {
+    const row = await db.get(`SELECT COUNT(*) cnt FROM acct_sms_raw WHERE status='PENDING'`);
+    const cnt = parseInt(row?.cnt || 0);
+    // 건수가 변했을 때만 알림 발송
+    if (cnt !== lastSmsPendingCount) {
+      lastSmsPendingCount = cnt;
+      const accountants = await db.all(`SELECT id FROM users WHERE role IN ('admin','accountant')`);
+      accountants.forEach(u => {
+        const sid = onlineUsers.get(u.id);
+        if (sid) io.to(sid).emit('sms_pending_update', { count: cnt });
+      });
+      if (cnt > 0) {
+        console.log(`[SMS Watcher] 미처리 SMS ${cnt}건 — 회계담당 알림 발송`);
+      }
+    }
+  } catch (e) {
+    console.error('[SMS Watcher]', e.message);
+  }
+}, 60 * 1000);
+
 // 라우터 등록
 app.use('/api/v1/auth', require('./routes/auth'));
 app.use('/api/v1/chat', verifyToken, require('./routes/chat'));

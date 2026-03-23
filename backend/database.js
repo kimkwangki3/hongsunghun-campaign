@@ -249,6 +249,9 @@ async function initDB() {
     )
   `);
   await db.run(`CREATE INDEX IF NOT EXISTS idx_acct_assets_no ON acct_assets(asset_no)`);
+  // 마이그레이션: is_asset 컬럼 (기존 DB 대응)
+  await db.run(`ALTER TABLE acct_transactions ADD COLUMN IF NOT EXISTS is_asset BOOLEAN DEFAULT FALSE`);
+  await db.run(`ALTER TABLE acct_transactions ADD COLUMN IF NOT EXISTS asset_id INTEGER REFERENCES acct_assets(id)`);
   // ─────────────────────────────────────────────────────────────────────
 
   // 성능 인덱스 (없으면 생성)

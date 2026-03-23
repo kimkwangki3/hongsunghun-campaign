@@ -4,7 +4,7 @@ const { google } = require('googleapis');
 
 // ── 시트별 컬럼 헤더 (선관위 회계보고서 양식 기준) ─────────────────
 const SHEET_HEADERS = {
-  '수입지출장부':   ['번호','날짜','구분','비용구분','과목','내용/거래처','금액(원)','영수증번호','계좌확인','보전가능','비고','등록자','등록일시'],
+  '수입지출장부':   ['번호','날짜','구분','비용구분','과목','내용/거래처','금액(원)','영수증번호','계좌확인','보전가능','비품여부','비품등록완료','비고','등록자','등록일시'],
   '선거비용명세':   ['번호','지출일','비용과목','내용/거래처','금액(원)','영수증종류','영수증번호','보전여부','비고'],
   '후원회수입':     ['번호','수입일','기부자성명','생년월일','주소','직업','연락처','금액(원)','영수증번호','비고'],
   '후원회지출':     ['번호','지출일','지출과목','내용','금액(원)','영수증번호','비고'],
@@ -148,6 +148,8 @@ async function syncAll(db) {
       t.cost_type === 'election_cost' ? '선거비용' : t.cost_type === 'non_election_cost' ? '비선거비용' : '',
       t.category || '', t.description || '', t.amount,
       t.receipt_no || '', t.account_verified ? 'O' : '', t.reimbursable ? 'O' : '',
+      t.is_asset ? '✅비품' : '',
+      t.asset_id ? `비-${String(t.asset_id).padStart(3,'0')}` : (t.is_asset ? '❌미등록' : ''),
       t.note || '', t.created_by_name || '',
       t.created_at ? new Date(t.created_at).toLocaleString('ko-KR') : '',
     ]);

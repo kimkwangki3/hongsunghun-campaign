@@ -119,11 +119,12 @@ router.post('/transactions', requireAccountant, async (req, res) => {
     const row = await db.get(
       `INSERT INTO acct_transactions
          (date,amount,type,description,account_type,cost_type,category,
-          receipt_no,receipt_id,account_verified,approved,reimbursable,source,note,created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'manual',$13,$14) RETURNING *`,
+          receipt_no,receipt_id,account_verified,approved,reimbursable,is_asset,source,note,created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'manual',$14,$15) RETURNING *`,
       [d.date, d.amount, d.type, d.description, d.account_type, d.cost_type,
        d.category, d.receipt_no, d.receipt_id || null,
        d.account_verified ?? false, d.approved ?? false, d.reimbursable,
+       d.type === 'expense' ? (d.is_asset ?? false) : false,
        d.note, req.user.id]
     );
     // 영수증 상태 PROCESSED + 처리자 기록
@@ -148,10 +149,12 @@ router.put('/transactions/:id', requireAccountant, async (req, res) => {
     if (d.date && d.date < '2026-05-14') d.reimbursable = false;
     const row = await db.get(
       `UPDATE acct_transactions SET date=$1,amount=$2,description=$3,account_type=$4,
-       cost_type=$5,category=$6,account_verified=$7,approved=$8,reimbursable=$9,note=$10,updated_at=NOW()
-       WHERE id=$11 RETURNING *`,
+       cost_type=$5,category=$6,account_verified=$7,approved=$8,reimbursable=$9,is_asset=$10,note=$11,updated_at=NOW()
+       WHERE id=$12 RETURNING *`,
       [d.date,d.amount,d.description,d.account_type,d.cost_type,
-       d.category,d.account_verified,d.approved,d.reimbursable,d.note,req.params.id]
+       d.category,d.account_verified,d.approved,d.reimbursable,
+       d.type === 'expense' ? (d.is_asset ?? false) : false,
+       d.note,req.params.id]
     );
     autoSync();
     res.json({ success: true, data: row });
@@ -162,6 +165,60 @@ router.put('/transactions/:id', requireAccountant, async (req, res) => {
 router.delete('/transactions/:id', requireAccountant, async (req, res) => {
   try {
     await db.run('DELETE FROM acct_transactions WHERE id=$1', [req.params.id]);
+    autoSync();
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── 미처리 SMS 건수 (회계담당용) ─────────────────────────
+router.get('/sms/pending-count', requireAccountant, async (req, res) => {
+  try {
+    const r = await db.get(`SELECT COUNT(*) cnt FROM acct_sms_raw WHERE status='PENDING'`);
+    res.json({ success: true, data: { count: parseInt(r?.cnt || 0) } });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── 미처리 SMS 목록 (회계담당용) ─────────────────────────
+router.get('/sms/pending', requireAccountant, async (req, res) => {
+  try {
+    const rows = await db.all(
+      `SELECT * FROM acct_sms_raw WHERE status='PENDING' ORDER BY received_at DESC LIMIT 100`
+    );
+    res.json({ success: true, data: rows });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── SMS 거래 등록 후 PROCESSED 처리 ──────────────────────
+router.patch('/sms/:id/process', requireAccountant, async (req, res) => {
+  try {
+    const { transaction_id } = req.body;
+    await db.run(
+      `UPDATE acct_sms_raw SET status='PROCESSED', processed_at=NOW(), transaction_id=$1 WHERE id=$2`,
+      [transaction_id || null, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── SMS 무시 처리 ─────────────────────────────────────────
+router.patch('/sms/:id/skip', requireAccountant, async (req, res) => {
+  try {
+    await db.run(
+      `UPDATE acct_sms_raw SET status='SKIPPED', skip_reason=$1 WHERE id=$2`,
+      [req.body.reason || '수동 무시', req.params.id]
+    );
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
+// ── 거래의 비품 연결 업데이트 ────────────────────────────
+router.patch('/transactions/:id/asset', requireAccountant, async (req, res) => {
+  try {
+    const { asset_id } = req.body;
+    await db.run(
+      `UPDATE acct_transactions SET asset_id=$1, is_asset=true, updated_at=NOW() WHERE id=$2`,
+      [asset_id, req.params.id]
+    );
     autoSync();
     res.json({ success: true });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }

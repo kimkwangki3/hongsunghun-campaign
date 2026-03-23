@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
-
+import { useSocket } from '../hooks/useSocket';
 import { api } from '../utils/api';
 import { useAuthStore } from '../store/authStore';
 
@@ -104,8 +104,31 @@ export default function AccountingPage() {
   const [allReceipts, setAllReceipts] = useState([]);
   const [assetReceiptSearch, setAssetReceiptSearch] = useState('');
   const [assetReceiptOpen, setAssetReceiptOpen] = useState(false);
+  const [pendingSmsCnt, setPendingSmsCnt] = useState(0);
+  const [pendingSmsRows, setPendingSmsRows] = useState([]);
+  const [pendingSubTab, setPendingSubTab] = useState('receipt'); // 'receipt' | 'sms'
+  const [postSaveTx, setPostSaveTx] = useState(null); // 비품등록 유도용 저장된 거래
 
   const toast = (m) => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
+
+  // ── 소켓: 미처리 SMS 실시간 배지 업데이트 ──────────────
+  useSocket({
+    onSmsPendingUpdate: useCallback(({ count }) => {
+      setPendingSmsCnt(count);
+      if (count > 0) toast(`📱 미처리 SMS ${count}건`);
+    }, []),
+  });
+
+  // ── 미처리 SMS 목록 로드 ──────────────────────────────
+  const loadPendingSms = useCallback(async () => {
+    if (!isAccountant) return;
+    try {
+      const r = await api.get('/accounting/sms/pending');
+      const rows = r.data.data || [];
+      setPendingSmsRows(rows);
+      setPendingSmsCnt(rows.length);
+    } catch { /* 권한없으면 무시 */ }
+  }, [isAccountant]);
 
   async function handleSheetsSync() {
     setSyncLoading(true);
@@ -192,7 +215,7 @@ export default function AccountingPage() {
   useEffect(() => {
     if (tab === 0) { loadSummary(); loadRecentReceipts(); loadPendingReceipts(); }
     if (tab === 1) loadTransactions();
-    if (tab === 2 && isAccountant) loadPendingReceipts();
+    if (tab === 2 && isAccountant) { loadPendingReceipts(); loadPendingSms(); }
     if (tab === 3 && isAccountant) api.get('/accounting/sms?status=PENDING').then(r => setSmsList(r.data.data || [])).catch(() => {});
     if (tab === 4 && isAccountant) {
       api.get('/accounting/sponsor/income').then(r => setSponsorIncome(r.data.data || [])).catch(() => {});
@@ -201,7 +224,7 @@ export default function AccountingPage() {
     if (tab === 5 && isAccountant) api.get('/accounting/staff').then(r => setStaff(r.data.data || [])).catch(() => {});
     if (tab === 6 && isAccountant) api.get('/accounting/receipts/list').then(r => setAllReceipts(r.data.data || [])).catch(() => {});
     if (tab === 7) loadAssets();
-  }, [tab, isAccountant, loadSummary, loadTransactions, loadPendingReceipts, loadAssets]);
+  }, [tab, isAccountant, loadSummary, loadTransactions, loadPendingReceipts, loadPendingSms, loadAssets]);
 
   async function handleSmsParse() {
     const lines = smsInput.split('\n').filter(l => l.trim());
@@ -273,10 +296,18 @@ export default function AccountingPage() {
       else if (modal === 'sponsor_income') url = '/accounting/sponsor/income';
       else if (modal === 'sponsor_expense') url = '/accounting/sponsor/expense';
       else if (modal === 'staff') url = '/accounting/staff';
-      await api.post(url, { ...form, ...(receiptId ? { receipt_id: receiptId } : {}) });
+      const savedForm = { ...form };
+      const res = await api.post(url, { ...form, ...(receiptId ? { receipt_id: receiptId } : {}) });
+      const savedTx = res.data.data;
       toast('✅ 등록 완료');
       setModal(null); setForm({}); clearModalReceipt(); setModalReceiptUrl(null);
-      if (modal === 'tx') { loadTransactions(); loadSummary(); loadPendingReceipts(); loadRecentReceipts(); }
+      if (modal === 'tx') {
+        loadTransactions(); loadSummary(); loadPendingReceipts(); loadRecentReceipts();
+        // 비품 체크됐으면 비품등록 유도
+        if (savedForm.type === 'expense' && savedForm.is_asset) {
+          setPostSaveTx({ ...savedTx, _formDescription: savedForm.description, _formAmount: savedForm.amount, _formDate: savedForm.date, _formCategory: savedForm.category });
+        }
+      }
       if (modal === 'sponsor_income' || modal === 'sponsor_expense') {
         api.get('/accounting/sponsor/income').then(r => setSponsorIncome(r.data.data || []));
         api.get('/accounting/sponsor/expense').then(r => setSponsorExpense(r.data.data || []));
@@ -393,9 +424,9 @@ export default function AccountingPage() {
         <div style={{ display: 'flex', gap: 4, marginTop: 10, overflowX: 'auto' }}>
           {tabs.map((t, i) => {
             const isPendingTab = isAccountant && t === '미처리영수증';
-            const badgeCount = isPendingTab ? pendingReceipts.length : 0;
+            const badgeCount = isPendingTab ? (pendingReceipts.length + pendingSmsCnt) : 0;
             return (
-              <button key={i} onClick={() => { setTab(i); if (isPendingTab) localStorage.setItem('pendingTabViewed', Date.now()); }} style={{
+              <button key={i} onClick={() => { setTab(i); if (isPendingTab) { localStorage.setItem('pendingTabViewed', Date.now()); loadPendingSms(); } }} style={{
                 padding: '5px 12px', fontSize: 11, fontWeight: 700, borderRadius: 20,
                 background: tab === i ? S.accent : S.surface2,
                 color: tab === i ? '#fff' : S.sub,
@@ -695,32 +726,45 @@ export default function AccountingPage() {
           </div>
         )}
 
-        {/* ── 미처리 영수증 탭 (회계담당+관리자) ── */}
+        {/* ── 미처리 탭 (회계담당+관리자) ── */}
         {tab === 2 && isAccountant && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
-              <div style={{ fontSize: 14, fontWeight: 700 }}>🧾 미처리 영수증</div>
-              <div style={{ display: 'flex', gap: 6 }}>
-                {user?.role === 'admin' && (
-                  <button onClick={async () => {
-                    try {
-                      const r = await api.post('/accounting/test/seed-receipt');
-                      toast(`✅ ${r.data.data.message}`);
-                      loadPendingReceipts();
-                    } catch (e) { toast(`❌ ${e.response?.data?.message || '실패'}`); }
-                  }} style={{
-                    background: '#2a1a00', color: S.yellow, border: '1px solid #ffa50244',
-                    borderRadius: 8, padding: '5px 12px', fontSize: 11, cursor: 'pointer'
-                  }}>🧪 테스트 데이터</button>
-                )}
-                <button onClick={loadPendingReceipts} style={{
-                  background: S.surface2, color: S.sub, border: S.border,
-                  borderRadius: 8, padding: '5px 12px', fontSize: 11, cursor: 'pointer'
-                }}>새로고침</button>
-              </div>
+            {/* 서브탭 */}
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+              {[
+                { key: 'receipt', label: '🧾 미처리 영수증', cnt: pendingReceipts.length },
+                { key: 'sms',     label: '📱 미처리 SMS',    cnt: pendingSmsCnt },
+              ].map(({ key, label, cnt }) => (
+                <button key={key} onClick={() => setPendingSubTab(key)} style={{
+                  padding: '6px 14px', borderRadius: 20, fontWeight: 700, fontSize: 12,
+                  background: pendingSubTab === key ? S.accent : S.surface2,
+                  color: pendingSubTab === key ? '#fff' : S.sub,
+                  border: pendingSubTab === key ? 'none' : S.border,
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5
+                }}>
+                  {label}
+                  {cnt > 0 && <span style={{ background: S.red, color: '#fff', borderRadius: 10, fontSize: 9, fontWeight: 900, padding: '1px 5px' }}>{cnt}</span>}
+                </button>
+              ))}
+              <button onClick={() => { loadPendingReceipts(); loadPendingSms(); }} style={{
+                marginLeft: 'auto', background: S.surface2, color: S.sub, border: S.border,
+                borderRadius: 8, padding: '5px 10px', fontSize: 11, cursor: 'pointer'
+              }}>새로고침</button>
+              {user?.role === 'admin' && (
+                <button onClick={async () => {
+                  try {
+                    const r = await api.post('/accounting/test/seed-receipt');
+                    toast(`✅ ${r.data.data.message}`); loadPendingReceipts();
+                  } catch (e) { toast(`❌ ${e.response?.data?.message || '실패'}`); }
+                }} style={{
+                  background: '#2a1a00', color: S.yellow, border: '1px solid #ffa50244',
+                  borderRadius: 8, padding: '5px 10px', fontSize: 11, cursor: 'pointer'
+                }}>🧪 테스트</button>
+              )}
             </div>
 
-            {pendingReceipts.length === 0 ? (
+            {/* ── 미처리 영수증 서브탭 ── */}
+            {pendingSubTab === 'receipt' && (pendingReceipts.length === 0 ? (
               <div style={{ textAlign: 'center', color: S.muted, padding: 60, fontSize: 13 }}>
                 <div style={{ fontSize: 36, marginBottom: 10 }}>✅</div>
                 미처리 영수증이 없습니다
@@ -779,7 +823,49 @@ export default function AccountingPage() {
                   </div>
                 </div>
               </Card>
-            ))}
+            )))}
+
+            {/* ── 미처리 SMS 서브탭 ── */}
+            {pendingSubTab === 'sms' && (
+              <div>
+                {pendingSmsRows.length === 0 ? (
+                  <div style={{ textAlign: 'center', color: S.muted, padding: 60, fontSize: 13 }}>
+                    <div style={{ fontSize: 36, marginBottom: 10 }}>✅</div>
+                    미처리 SMS가 없습니다
+                  </div>
+                ) : pendingSmsRows.map(sms => (
+                  <Card key={sms.id} style={{ marginBottom: 8, border: '1px solid #1e6bff33' }}>
+                    <div style={{ fontSize: 11, color: S.sub, marginBottom: 6, lineHeight: 1.6, wordBreak: 'break-all' }}>
+                      <span style={{ background: '#1e6bff22', color: S.accent, borderRadius: 4, padding: '1px 6px', fontSize: 10, fontWeight: 700, marginRight: 6 }}>📱 SMS</span>
+                      {sms.raw_text}
+                    </div>
+                    <div style={{ fontSize: 10, color: S.muted, marginBottom: 8 }}>
+                      수신: {sms.received_at ? new Date(sms.received_at).toLocaleString('ko-KR') : ''} · 출처: {sms.source || 'auto'}
+                    </div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      <button onClick={() => {
+                        setModal('tx');
+                        setForm({
+                          date: today, type: 'expense', cost_type: 'election_cost',
+                          description: sms.raw_text?.substring(0, 50) || '',
+                          sms_id: sms.id,
+                        });
+                      }} style={{
+                        flex: 1, padding: '7px 0', background: S.accent, color: '#fff',
+                        border: 'none', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer'
+                      }}>+ 거래 등록</button>
+                      <button onClick={async () => {
+                        await api.patch(`/accounting/sms/${sms.id}/skip`, { reason: '수동 무시' });
+                        loadPendingSms(); toast('🚫 무시 처리됨');
+                      }} style={{
+                        padding: '7px 14px', background: S.surface2, color: S.sub,
+                        border: S.border, borderRadius: 8, fontSize: 12, cursor: 'pointer'
+                      }}>무시</button>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -982,6 +1068,32 @@ export default function AccountingPage() {
                 <FormRow label="금액"><AmountInput value={form.amount} onChange={e => setForm(f => ({...f,amount:parseInt(e.target.value)||0}))} /></FormRow>
                 <FormRow label="내용"><input type="text" placeholder="거래처/설명" value={form.description||''} onChange={e => setForm(f => ({...f,description:e.target.value}))} style={inputStyle} /></FormRow>
                 <FormRow label="비고"><input type="text" value={form.note||''} onChange={e => setForm(f => ({...f,note:e.target.value}))} style={inputStyle} /></FormRow>
+
+                {/* 비품 여부 (지출일 때만) */}
+                {form.type === 'expense' && (
+                  <div style={{
+                    background: form.is_asset ? '#1a0a2e' : S.surface2,
+                    border: form.is_asset ? '1px solid #7c3aed88' : S.border,
+                    borderRadius: 10, padding: '10px 14px',
+                    display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer'
+                  }} onClick={() => setForm(f => ({ ...f, is_asset: !f.is_asset }))}>
+                    <input type="checkbox" checked={!!form.is_asset} readOnly style={{ width: 16, height: 16, accentColor: '#7c3aed', marginTop: 1, cursor: 'pointer' }} />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: form.is_asset ? '#c084fc' : S.text }}>
+                        🏷️ 비품으로 등록
+                      </div>
+                      <div style={{ fontSize: 11, color: S.sub, marginTop: 2 }}>
+                        체크 시 거래 저장 후 <strong style={{ color: '#c084fc' }}>비품 등록 및 스티커 출력</strong>이 진행됩니다.
+                      </div>
+                      {form.is_asset && form.category && !['집기비품비','사무용품비'].includes(form.category) && (
+                        <div style={{ marginTop: 4, fontSize: 11, color: S.yellow }}>
+                          ⚠️ 비품 지출은 보통 과목 <strong>집기비품비</strong>로 분류됩니다.
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+
                 {/* 연결된 영수증 or 새 첨부 */}
                 {form.receipt_id ? (
                   <div style={{ background: '#0d1f0d', border: '1px solid #10b98144', borderRadius: 8, padding: '10px 14px', display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -1288,13 +1400,65 @@ export default function AccountingPage() {
                 if (!form.name || !form.purchase_date || !form.unit_price) { toast('❌ 품목명·구매일·단가 필수'); return; }
                 setLoading(true);
                 try {
-                  await api.post('/accounting/assets', form);
-                  toast('✅ 비품 등록 완료');
+                  const res = await api.post('/accounting/assets', { ...form, total_amount: (form.quantity||1) * (form.unit_price||0) });
+                  const newAsset = res.data.data;
+                  // 거래와 비품 연결 (transaction_id가 있을 때)
+                  if (form.transaction_id && newAsset?.id) {
+                    api.patch(`/accounting/transactions/${form.transaction_id}/asset`, { asset_id: newAsset.id }).catch(() => {});
+                  }
+                  toast('✅ 비품 등록 완료 — 스티커를 출력하세요');
                   setModal(null); setForm({});
                   loadAssets();
+                  // 스티커 바로 출력 유도
+                  if (newAsset) setTimeout(() => setStickerTarget(newAsset), 300);
                 } catch (e) { toast('❌ ' + (e.response?.data?.message || '등록 실패')); }
                 finally { setLoading(false); }
               }} style={{ flex: 2, padding: '11px 0', background: S.accent, color: '#fff', border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer', opacity: loading ? 0.5 : 1 }}>등록</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 비품등록 강제 유도 모달 (거래 저장 후 is_asset=true 일 때) ── */}
+      {postSaveTx && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1500, padding: 20 }}>
+          <div style={{ background: S.surface, borderRadius: 16, padding: 24, width: '100%', maxWidth: 400 }}>
+            <div style={{ fontSize: 32, textAlign: 'center', marginBottom: 12 }}>🏷️</div>
+            <div style={{ fontSize: 16, fontWeight: 900, textAlign: 'center', marginBottom: 8 }}>비품 등록이 필요합니다</div>
+            <div style={{ fontSize: 13, color: S.sub, textAlign: 'center', lineHeight: 1.6, marginBottom: 20 }}>
+              거래가 등록되었습니다.<br />
+              <strong style={{ color: S.text }}>{postSaveTx._formDescription}</strong>{' '}
+              <strong style={{ color: S.yellow }}>{Number(postSaveTx._formAmount||0).toLocaleString()}원</strong><br />
+              비품 등록 후 스티커를 출력해야 합니다.
+            </div>
+            <div style={{ background: S.surface2, borderRadius: 10, padding: '10px 14px', fontSize: 12, color: S.sub, marginBottom: 20 }}>
+              ⚠️ 비품 등록을 완료해야 구글시트에 <strong style={{ color: S.green }}>비품등록완료</strong>로 표시됩니다.
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={() => setPostSaveTx(null)} style={{
+                flex: 1, padding: '11px 0', background: S.surface2, color: S.sub,
+                border: S.border, borderRadius: 10, fontSize: 13, cursor: 'pointer'
+              }}>나중에 하기</button>
+              <button onClick={() => {
+                const tx = postSaveTx;
+                setPostSaveTx(null);
+                setModal('asset');
+                setAssetReceiptSearch(''); setAssetReceiptOpen(false);
+                if (allReceipts.length === 0) api.get('/accounting/receipts/list').then(r => setAllReceipts(r.data.data || [])).catch(() => {});
+                setForm({
+                  purchase_date: tx._formDate || today,
+                  name: tx._formDescription || '',
+                  unit_price: tx._formAmount || 0,
+                  quantity: 1,
+                  status: '사용중',
+                  location: '선거사무소 본소',
+                  transaction_id: tx.id,
+                  accounted: true,
+                });
+              }} style={{
+                flex: 2, padding: '11px 0', background: '#7c3aed', color: '#fff',
+                border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer'
+              }}>🏷️ 지금 비품 등록하기</button>
             </div>
           </div>
         </div>
