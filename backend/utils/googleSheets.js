@@ -6,8 +6,9 @@ const { google } = require('googleapis');
 const SHEET_HEADERS = {
   '수입지출장부':   ['번호','날짜','구분','비용구분','과목','내용/거래처','금액(원)','영수증번호','계좌확인','보전가능','비품여부','비품등록완료','비고','등록자','등록일시'],
   '선거비용명세':   ['번호','지출일','비용과목','내용/거래처','금액(원)','영수증종류','영수증번호','보전여부','비고'],
-  '후원회수입':     ['번호','수입일','기부자성명','생년월일','주소','직업','연락처','금액(원)','영수증번호','비고'],
-  '후원회지출':     ['번호','지출일','지출과목','내용','금액(원)','영수증번호','비고'],
+  '후원회수입':     ['번호','수입일','기부자성명','연락처','은행','계좌','금액(원)','영수증번호','입력방법','비고'],
+  '후원회지출':     ['번호','지출일','지출과목','이체목적','수신계좌','금액(원)','영수증번호','입력방법','비고'],
+  '후원자목록':     ['기부자','연락처','은행','입금횟수','합계금액(원)','한도대비(%)','첫입금일','최근입금일'],
   '수당실비명세':   ['번호','지급일','직책','성명','계좌번호','수당(원)','일비(원)','식비(원)','교통공제(원)','지급합계(원)','영수증번호','승인여부','비고'],
   '영수증목록':     ['번호','업로드일','영수증날짜','업체명','사업자번호','영수증종류','금액(원)','과목','업로더','GCS백업URL'],
   '비품관리':       ['관리번호','품목명','수량','단가(원)','합계(원)','구매일','구매처','비치장소','거래번호','영수증번호','상태','회계등록여부','비고','등록자'],
@@ -167,7 +168,10 @@ async function syncAll(db) {
   const spInc = await db.all('SELECT * FROM acct_sponsor_income ORDER BY date, id');
   if (spInc.length > 0) {
     await client.spreadsheets.values.update({ spreadsheetId, range: '후원회수입!A2', valueInputOption: 'USER_ENTERED', requestBody: {
-      values: spInc.map((r,i) => [i+1, r.date, r.donor_name||'익명', r.donor_dob||'', r.donor_address||'', r.donor_occupation||'', r.donor_phone||'', r.amount, r.receipt_no||'', r.note||''])
+      values: spInc.map((r,i) => [
+        i+1, r.date, r.donor_name||'익명', r.donor_phone||'', r.bank_name||'', r.account_no||'',
+        r.amount, r.receipt_no||'', r.source==='sms'?'SMS자동':'수동', r.note||''
+      ])
     }});
   }
 
@@ -175,7 +179,27 @@ async function syncAll(db) {
   const spExp = await db.all('SELECT * FROM acct_sponsor_expense ORDER BY date, id');
   if (spExp.length > 0) {
     await client.spreadsheets.values.update({ spreadsheetId, range: '후원회지출!A2', valueInputOption: 'USER_ENTERED', requestBody: {
-      values: spExp.map((r,i) => [i+1, r.date, r.category, r.note||'', r.amount, r.receipt_no||'', ''])
+      values: spExp.map((r,i) => [
+        i+1, r.date, r.category, r.transfer_purpose||'선거자금이체', r.destination_account||'',
+        r.amount, r.receipt_no||'', r.source==='sms'?'SMS자동':'수동', r.note||''
+      ])
+    }});
+  }
+
+  // ─ 후원자 목록 ────────────────────────────────────────
+  const donorRows = await db.all(
+    `SELECT donor_name, donor_phone, bank_name,
+      COUNT(*) cnt, SUM(amount) total, MIN(date) first_date, MAX(date) last_date,
+      ROUND(SUM(amount) * 100.0 / 5000000, 1) pct
+     FROM acct_sponsor_income WHERE donor_name IS NOT NULL
+     GROUP BY donor_name, donor_phone, bank_name ORDER BY total DESC`
+  );
+  if (donorRows.length > 0) {
+    await client.spreadsheets.values.update({ spreadsheetId, range: '후원자목록!A2', valueInputOption: 'USER_ENTERED', requestBody: {
+      values: donorRows.map(r => [
+        r.donor_name, r.donor_phone||'', r.bank_name||'',
+        r.cnt, r.total, `${r.pct}%`, r.first_date||'', r.last_date||''
+      ])
     }});
   }
 

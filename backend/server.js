@@ -227,6 +227,24 @@ io.on('connection', async (socket) => {
 app.set('io', io);
 app.set('onlineUsers', onlineUsers);
 
+// ── 후원회 SMS 실시간 감시 (60초마다) ────────────────────────────────────
+let lastSponsorSmsCnt = 0;
+setInterval(async () => {
+  try {
+    const row = await db.get(`SELECT COUNT(*) cnt FROM sponsor_sms_raw WHERE status='PENDING'`);
+    const cnt = parseInt(row?.cnt || 0);
+    if (cnt !== lastSponsorSmsCnt) {
+      lastSponsorSmsCnt = cnt;
+      const accountants = await db.all(`SELECT id FROM users WHERE role IN ('admin','accountant')`);
+      accountants.forEach(u => {
+        const sid = onlineUsers.get(u.id);
+        if (sid) io.to(sid).emit('sponsor_sms_pending', { count: cnt });
+      });
+      if (cnt > 0) console.log(`[후원SMS Watcher] 미처리 ${cnt}건`);
+    }
+  } catch (e) { console.error('[후원SMS Watcher]', e.message); }
+}, 60 * 1000);
+
 // ── SMS 실시간 감시 (60초마다 미처리 SMS 체크 → 회계담당에게 소켓 알림) ──
 let lastSmsPendingCount = 0;
 setInterval(async () => {
@@ -257,6 +275,7 @@ app.use('/api/v1/schedule', verifyToken, require('./routes/schedule'));
 app.use('/api/v1/notification', verifyToken, require('./routes/notification'));
 app.use('/api/v1/ai', verifyToken, require('./routes/ai'));
 app.use('/api/v1/accounting', verifyToken, require('./routes/accounting'));
+app.use('/api/v1/sponsor',    verifyToken, require('./routes/sponsor'));
 
 // Health check
 app.get('/health', (_, res) => res.json({ status: 'ok', time: new Date() }));

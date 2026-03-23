@@ -49,16 +49,20 @@ function initSocket(token) {
   // 미처리 SMS 건수 변경 알림 (회계담당용)
   socket.on('sms_pending_update', (data) =>
     subscribers.forEach(s => s.cb.current.onSmsPendingUpdate?.(data)));
+
+  // 후원회 미처리 SMS 알림 (회계담당용)
+  socket.on('sponsor_sms_pending', (data) =>
+    subscribers.forEach(s => s.cb.current.onSponsorSmsPending?.(data)));
 }
 
-export function useSocket({ onNewMessage, onUserTyping, onMessagesRead, onRoomOnlineUpdate, onToast, onMessagesCleared, onSmsPendingUpdate } = {}) {
+export function useSocket({ onNewMessage, onUserTyping, onMessagesRead, onRoomOnlineUpdate, onToast, onMessagesCleared, onSmsPendingUpdate, onSponsorSmsPending } = {}) {
   const token = useAuthStore(s => s.token);
   const [connected, setConnected] = useState(globalSocket?.connected ?? false);
   const cb = useRef({});
 
   // 매 렌더마다 최신 콜백으로 갱신 (stale closure 방지)
   useEffect(() => {
-    cb.current = { onNewMessage, onUserTyping, onMessagesRead, onRoomOnlineUpdate, onToast, onMessagesCleared, onSmsPendingUpdate };
+    cb.current = { onNewMessage, onUserTyping, onMessagesRead, onRoomOnlineUpdate, onToast, onMessagesCleared, onSmsPendingUpdate, onSponsorSmsPending };
   });
 
   // 구독자 등록 / 해제

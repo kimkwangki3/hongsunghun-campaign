@@ -134,6 +134,7 @@ export default function Layout() {
     { path:'/dm',            label:'1:1',   icon: DMIcon,    badge: dmUnread    },
     { path:'/aibot',         label:'법무봇', icon: BotIcon,     badge: 0           },
     { path:'/accounting',    label:'회계',   icon: LedgerIcon,  badge: 0           },
+    ...(['admin','accountant'].includes(user?.role) ? [{ path:'/sponsor', label:'후원회', icon: LedgerIcon, badge: 0 }] : []),
     ...(user?.role === 'admin' ? [{ path:'/admin', label:'관리', icon: GearIcon, badge: 0 }] : []),
   ];
 

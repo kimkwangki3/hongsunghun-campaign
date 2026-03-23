@@ -252,6 +252,40 @@ async function initDB() {
   // 마이그레이션: is_asset 컬럼 (기존 DB 대응)
   await db.run(`ALTER TABLE acct_transactions ADD COLUMN IF NOT EXISTS is_asset BOOLEAN DEFAULT FALSE`);
   await db.run(`ALTER TABLE acct_transactions ADD COLUMN IF NOT EXISTS asset_id INTEGER REFERENCES acct_assets(id)`);
+
+  // ── 후원회 전용 SMS 테이블 ─────────────────────────────────────────
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS sponsor_sms_raw (
+      id             SERIAL PRIMARY KEY,
+      raw_text       TEXT NOT NULL,
+      hash           VARCHAR(64) NOT NULL UNIQUE,
+      received_at    TIMESTAMP DEFAULT NOW(),
+      source         VARCHAR(20) DEFAULT 'auto',
+      sms_type       VARCHAR(20) DEFAULT 'unknown',
+      parsed_amount  INTEGER,
+      parsed_sender  TEXT,
+      parsed_balance INTEGER,
+      status         VARCHAR(20) DEFAULT 'PENDING',
+      skip_reason    TEXT,
+      processed_at   TIMESTAMP,
+      income_id      INTEGER REFERENCES acct_sponsor_income(id),
+      expense_id     INTEGER REFERENCES acct_sponsor_expense(id),
+      created_at     TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_sponsor_sms_status ON sponsor_sms_raw(status)`);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_sponsor_sms_hash   ON sponsor_sms_raw(hash)`);
+
+  // 후원회 수입 마이그레이션
+  await db.run(`ALTER TABLE acct_sponsor_income ADD COLUMN IF NOT EXISTS sms_id INTEGER REFERENCES sponsor_sms_raw(id)`);
+  await db.run(`ALTER TABLE acct_sponsor_income ADD COLUMN IF NOT EXISTS account_no VARCHAR(30)`);
+  await db.run(`ALTER TABLE acct_sponsor_income ADD COLUMN IF NOT EXISTS bank_name VARCHAR(30)`);
+  await db.run(`ALTER TABLE acct_sponsor_income ADD COLUMN IF NOT EXISTS donor_contact VARCHAR(30)`);
+
+  // 후원회 지출 마이그레이션
+  await db.run(`ALTER TABLE acct_sponsor_expense ADD COLUMN IF NOT EXISTS sms_id INTEGER REFERENCES sponsor_sms_raw(id)`);
+  await db.run(`ALTER TABLE acct_sponsor_expense ADD COLUMN IF NOT EXISTS destination_account VARCHAR(60)`);
+  await db.run(`ALTER TABLE acct_sponsor_expense ADD COLUMN IF NOT EXISTS transfer_purpose VARCHAR(50) DEFAULT '선거자금이체'`);
   // ─────────────────────────────────────────────────────────────────────
 
   // 성능 인덱스 (없으면 생성)
