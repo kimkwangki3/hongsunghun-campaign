@@ -48,8 +48,12 @@ const TABS = ['대시보드', '수입/지출', '미처리영수증', 'SMS', '후
 const ACCT_TABS = ['대시보드', '수입/지출']; // 일반 사용자용
 
 // ── 선관위 양식 과목 체계 ──────────────────────────────
-const INCOME_ACCOUNT_TYPES = ['자기부담금', '차입금', '정당지원금', '기탁금반환금', '기타수입'];
-const EXPENSE_CATEGORIES = {
+// 수입 과목 (계정과목)
+const INCOME_CATEGORIES = ['자기부담금', '차입금', '정당지원금', '기탁금반환금', '기타수입'];
+
+// 지출 계정과목 (대분류) → 세목 (소분류) 매핑
+// 비선거비용 계정 → cost_type 자동 non_election_cost
+const EXPENSE_ACCOUNTS = {
   '선전비':           ['인쇄물제작비(홍보물)', '현수막·포스터제작비', '신문광고비', '방송광고비', '인터넷·SNS광고비', '선거공보제작비'],
   '사무소설치유지비':  ['사무소임차료', '집기·비품비', '수도광열비', '사무용품비', '기타사무소비'],
   '인건비·수당':      ['선거사무원수당', '선거사무장수당', '선거연락소장수당', '회계책임자수당'],
@@ -58,8 +62,10 @@ const EXPENSE_CATEGORIES = {
   '차량비':           ['차량유류비', '차량임차료', '차량수리비'],
   '집회비':           ['다과·음료비', '행사진행비'],
   '기탁금':           ['선관위기탁금'],
-  '비선거비용':       ['정치활동비', '기타비선거비용'],
+  '비선거비용':       ['정치활동비', '기타비선거비용'],  // ← 이 계정은 non_election_cost 자동
 };
+// 비선거비용 계정과목 목록
+const NON_ELECTION_ACCOUNTS = new Set(['비선거비용']);
 
 const ASSET_LOCATIONS = ['선거사무소 본소', '선거연락소 1', '선거연락소 2', '선거연락소 3', '기타'];
 
@@ -1022,77 +1028,126 @@ export default function AccountingPage() {
             {/* 수입/지출 폼 */}
             {modal === 'tx' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+
+                {/* ① 날짜 */}
                 <FormRow label="날짜"><input type="date" value={form.date||''} onChange={e => setForm(f => ({...f,date:e.target.value}))} style={inputStyle} /></FormRow>
-                {/* 예비후보자 기간 경고 */}
                 {form.date && form.date < '2026-05-14' && (
                   <div style={{ background: '#3a1f00', border: '1px solid #ff8c00', borderRadius: 8, padding: '8px 12px', fontSize: 12, color: '#ffa502' }}>
                     ⚠️ <strong>예비후보자 기간</strong> (2026-05-14 이전)은 선거비용 보전 대상이 아닙니다.
                   </div>
                 )}
-                <FormRow label="구분">
-                  <select value={form.type||'expense'} onChange={e => setForm(f => ({...f,type:e.target.value}))} style={inputStyle}>
+
+                {/* ② 구분: 수입 / 지출 */}
+                <FormRow label="구분 (수입·지출)">
+                  <select value={form.type||'expense'} onChange={e => setForm(f => ({...f, type: e.target.value, account: '', category: '', cost_type: 'election_cost'}))} style={inputStyle}>
                     <option value="expense">지출</option>
                     <option value="income">수입</option>
                   </select>
                 </FormRow>
-                <FormRow label="비용구분">
-                  <select value={form.cost_type||''} onChange={e => setForm(f => ({...f,cost_type:e.target.value}))} style={inputStyle}>
-                    <option value="election_cost">
-                      {form.date && form.date < '2026-05-14' ? '선거비용 (예비후보자 기간 — 보전 불가)' : '선거비용 (보전 가능)'}
-                    </option>
-                    <option value="non_election_cost">비선거비용</option>
-                  </select>
-                </FormRow>
-                {/* 수입 자금원천 (수입일 때만) */}
+
+                {/* ③-수입: 수입과목(계정과목) */}
                 {form.type === 'income' && (
-                  <FormRow label="자금원천">
-                    <select value={form.account_type||''} onChange={e => setForm(f => ({...f,account_type:e.target.value}))} style={inputStyle}>
-                      <option value="">선택</option>
-                      {INCOME_ACCOUNT_TYPES.map(c => <option key={c} value={c}>{c}</option>)}
+                  <FormRow label="수입과목 (계정과목)">
+                    <select value={form.account_type||''} onChange={e => setForm(f => ({...f, account_type: e.target.value, category: e.target.value}))} style={inputStyle}>
+                      <option value="">— 선택 —</option>
+                      {INCOME_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
+                    <div style={{ fontSize: 10, color: S.muted, marginTop: 3 }}>자기부담금·차입금·정당지원금·기탁금반환금 중 선택</div>
                   </FormRow>
                 )}
-                <FormRow label="과목">
-                  <select value={form.category||''} onChange={e => setForm(f => ({...f,category:e.target.value}))} style={inputStyle}>
-                    <option value="">선택</option>
-                    {form.type === 'income'
-                      ? INCOME_ACCOUNT_TYPES.map(c => <option key={c} value={c}>{c}</option>)
-                      : Object.entries(EXPENSE_CATEGORIES).map(([group, cats]) => (
-                          <optgroup key={group} label={group}>
-                            {cats.map(c => <option key={c} value={c}>{c}</option>)}
-                          </optgroup>
-                        ))
-                    }
-                  </select>
-                </FormRow>
-                <FormRow label="금액"><AmountInput value={form.amount} onChange={e => setForm(f => ({...f,amount:parseInt(e.target.value)||0}))} /></FormRow>
-                <FormRow label="내용"><input type="text" placeholder="거래처/설명" value={form.description||''} onChange={e => setForm(f => ({...f,description:e.target.value}))} style={inputStyle} /></FormRow>
-                <FormRow label="비고"><input type="text" value={form.note||''} onChange={e => setForm(f => ({...f,note:e.target.value}))} style={inputStyle} /></FormRow>
 
-                {/* 비품 여부 (지출일 때만) */}
-                {form.type === 'expense' && (
+                {/* ③-지출: 계정과목(대분류) → 세목(소분류) → 비용구분 자동판별 */}
+                {form.type === 'expense' && (<>
+                  <FormRow label="계정과목 (대분류)">
+                    <select value={form.account||''} onChange={e => {
+                      const acct = e.target.value;
+                      const isNonElection = NON_ELECTION_ACCOUNTS.has(acct);
+                      setForm(f => ({
+                        ...f,
+                        account: acct,
+                        category: '',
+                        cost_type: isNonElection ? 'non_election_cost' : 'election_cost',
+                      }));
+                    }} style={inputStyle}>
+                      <option value="">— 선택 —</option>
+                      {Object.keys(EXPENSE_ACCOUNTS).map(a => (
+                        <option key={a} value={a}>{a}</option>
+                      ))}
+                    </select>
+                  </FormRow>
+
+                  {form.account && (
+                    <FormRow label={`세목 (${form.account} 소분류)`}>
+                      <select value={form.category||''} onChange={e => setForm(f => ({...f, category: e.target.value}))} style={inputStyle}>
+                        <option value="">— 선택 —</option>
+                        {(EXPENSE_ACCOUNTS[form.account]||[]).map(c => (
+                          <option key={c} value={c}>{c}</option>
+                        ))}
+                      </select>
+                    </FormRow>
+                  )}
+
+                  {/* 비용구분: 계정 선택 시 자동 판별 + 수동 변경 가능 */}
+                  <div style={{
+                    background: S.surface2, border: S.border, borderRadius: 8,
+                    padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8
+                  }}>
+                    <div style={{ fontSize: 11, color: S.sub, minWidth: 56 }}>비용구분</div>
+                    <div style={{ display: 'flex', gap: 6 }}>
+                      {[['election_cost','선거비용 (보전가능)'],['non_election_cost','비선거비용']].map(([val, lbl]) => (
+                        <button key={val} onClick={() => setForm(f => ({...f, cost_type: val}))} style={{
+                          padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none',
+                          background: form.cost_type === val ? (val === 'election_cost' ? S.accent : S.yellow) : S.surface,
+                          color: form.cost_type === val ? '#fff' : S.muted,
+                        }}>{lbl}</button>
+                      ))}
+                    </div>
+                    {form.date && form.date < '2026-05-14' && form.cost_type === 'election_cost' && (
+                      <span style={{ fontSize: 10, color: S.yellow }}>(보전불가)</span>
+                    )}
+                  </div>
+
+                  {/* ④ 비품 여부 — 지출 계정 선택 후 바로 확인 */}
                   <div style={{
                     background: form.is_asset ? '#1a0a2e' : S.surface2,
-                    border: form.is_asset ? '1px solid #7c3aed88' : S.border,
-                    borderRadius: 10, padding: '10px 14px',
-                    display: 'flex', alignItems: 'flex-start', gap: 10, cursor: 'pointer'
+                    border: form.is_asset ? '1px solid #7c3aed' : S.border,
+                    borderRadius: 10, padding: '12px 14px',
+                    display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer'
                   }} onClick={() => setForm(f => ({ ...f, is_asset: !f.is_asset }))}>
-                    <input type="checkbox" checked={!!form.is_asset} readOnly style={{ width: 16, height: 16, accentColor: '#7c3aed', marginTop: 1, cursor: 'pointer' }} />
+                    <div style={{
+                      width: 22, height: 22, borderRadius: 6, border: `2px solid ${form.is_asset ? '#7c3aed' : S.muted}`,
+                      background: form.is_asset ? '#7c3aed' : 'transparent',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                    }}>
+                      {form.is_asset && <span style={{ color: '#fff', fontSize: 14, fontWeight: 900 }}>✓</span>}
+                    </div>
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 700, color: form.is_asset ? '#c084fc' : S.text }}>
-                        🏷️ 비품으로 등록
+                        🏷️ 이 지출은 비품입니다
                       </div>
-                      <div style={{ fontSize: 11, color: S.sub, marginTop: 2 }}>
-                        체크 시 거래 저장 후 <strong style={{ color: '#c084fc' }}>비품 등록 및 스티커 출력</strong>이 진행됩니다.
+                      <div style={{ fontSize: 11, color: S.sub, marginTop: 1 }}>
+                        {form.is_asset
+                          ? '저장 후 비품 등록 → 스티커 출력이 자동으로 진행됩니다'
+                          : '책상, 의자, 전자기기 등 선거사무소 비품이면 체크'}
                       </div>
-                      {form.is_asset && form.category && !['집기비품비','사무용품비'].includes(form.category) && (
-                        <div style={{ marginTop: 4, fontSize: 11, color: S.yellow }}>
-                          ⚠️ 비품 지출은 보통 과목 <strong>집기비품비</strong>로 분류됩니다.
-                        </div>
-                      )}
                     </div>
                   </div>
-                )}
+                  {form.is_asset && (
+                    <div style={{ background: '#3a0000', border: '1px solid #ef4444', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#ef4444', fontWeight: 700, lineHeight: 1.6 }}>
+                      ⛔ 비품 체크 시 거래 저장 후 <strong>반드시</strong> 비품 등록을 완료해야 합니다.<br />
+                      <span style={{ fontWeight: 400, color: '#fca5a5' }}>미등록 시 구글시트에 '미등록'으로 표시되며 선관위 제출 자료에서 누락됩니다.</span>
+                    </div>
+                  )}
+                </>)}
+
+                {/* 금액·내용·비고 — 수입/지출 공통 */}
+                <FormRow label="금액 (원)"><AmountInput value={form.amount} onChange={e => setForm(f => ({...f,amount:parseInt(e.target.value)||0}))} /></FormRow>
+                <FormRow label="내용·적요">
+                  <input type="text" placeholder="지출 내용 또는 거래처명" value={form.description||''} onChange={e => setForm(f => ({...f,description:e.target.value}))} style={inputStyle} />
+                </FormRow>
+                <FormRow label="비고">
+                  <input type="text" value={form.note||''} onChange={e => setForm(f => ({...f,note:e.target.value}))} style={inputStyle} />
+                </FormRow>
 
                 {/* 연결된 영수증 or 새 첨부 */}
                 {form.receipt_id ? (
@@ -1218,18 +1273,10 @@ export default function AccountingPage() {
             </div>
           </div>
 
+          <div style={{ background: '#1a1a0a', border: '1px solid #ffa50244', borderRadius: 8, padding: '10px 14px', fontSize: 12, color: '#ffa502', marginBottom: 12 }}>
+            💡 비품 등록은 <strong>수입/지출 등록</strong> 시 '이 지출은 비품입니다' 체크를 통해서만 이루어집니다.
+          </div>
           <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-            {isAccountant && (
-              <button onClick={() => {
-                setModal('asset');
-                setForm({ purchase_date: today, quantity: 1, status: '사용중', location: '선거사무소 본소' });
-                setAssetReceiptSearch(''); setAssetReceiptOpen(false);
-                if (allReceipts.length === 0) api.get('/accounting/receipts/list').then(r => setAllReceipts(r.data.data || [])).catch(() => {});
-              }} style={{
-                flex: 1, padding: '10px 0', background: S.accent, color: '#fff',
-                border: 'none', borderRadius: 8, fontWeight: 700, fontSize: 13, cursor: 'pointer'
-              }}>+ 비품 등록</button>
-            )}
             {assets.length > 0 && (
               <button onClick={() => setStickerTarget('all')} style={{
                 padding: '10px 16px', background: '#7c3aed', color: '#fff',
@@ -1434,11 +1481,7 @@ export default function AccountingPage() {
             <div style={{ background: S.surface2, borderRadius: 10, padding: '10px 14px', fontSize: 12, color: S.sub, marginBottom: 20 }}>
               ⚠️ 비품 등록을 완료해야 구글시트에 <strong style={{ color: S.green }}>비품등록완료</strong>로 표시됩니다.
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={() => setPostSaveTx(null)} style={{
-                flex: 1, padding: '11px 0', background: S.surface2, color: S.sub,
-                border: S.border, borderRadius: 10, fontSize: 13, cursor: 'pointer'
-              }}>나중에 하기</button>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               <button onClick={() => {
                 const tx = postSaveTx;
                 setPostSaveTx(null);
@@ -1456,9 +1499,13 @@ export default function AccountingPage() {
                   accounted: true,
                 });
               }} style={{
-                flex: 2, padding: '11px 0', background: '#7c3aed', color: '#fff',
-                border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 13, cursor: 'pointer'
-              }}>🏷️ 지금 비품 등록하기</button>
+                width: '100%', padding: '13px 0', background: '#7c3aed', color: '#fff',
+                border: 'none', borderRadius: 10, fontWeight: 700, fontSize: 14, cursor: 'pointer'
+              }}>🏷️ 지금 비품 등록하기 (필수)</button>
+              <button onClick={() => setPostSaveTx(null)} style={{
+                width: '100%', padding: '8px 0', background: 'transparent', color: S.muted,
+                border: 'none', fontSize: 11, cursor: 'pointer', textDecoration: 'underline'
+              }}>나중에 하기 (비품 미등록 상태로 유지됨)</button>
             </div>
           </div>
         </div>
