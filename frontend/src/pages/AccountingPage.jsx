@@ -107,6 +107,7 @@ export default function AccountingPage() {
   const [uploadNote, setUploadNote] = useState('');
   const [assets, setAssets] = useState([]);
   const [stickerTarget, setStickerTarget] = useState(null); // 스티커 인쇄 대상
+  const [stickerSize, setStickerSize] = useState('50x30');  // 50x15 | 50x30 | 50x50
   const [allReceipts, setAllReceipts] = useState([]);
   const [assetReceiptSearch, setAssetReceiptSearch] = useState('');
   const [assetReceiptOpen, setAssetReceiptOpen] = useState(false);
@@ -1496,62 +1497,178 @@ export default function AccountingPage() {
       )}
 
       {/* ── 스티커 인쇄 모달 ── */}
-      {stickerTarget && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
-          <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 500, color: '#111', maxHeight: '90vh', overflowY: 'auto' }}>
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 16, color: '#111' }}>
-              🏷️ 스티커 미리보기 {stickerTarget === 'all' ? `(전체 ${assets.length}개)` : ''}
+      {stickerTarget && (() => {
+        const stickerList = stickerTarget === 'all' ? assets : [stickerTarget];
+        const sizeMap = {
+          '50x15': { w: '50mm', h: '15mm', px: 4, py: 3 },
+          '50x30': { w: '50mm', h: '30mm', px: 6, py: 5 },
+          '50x50': { w: '50mm', h: '50mm', px: 8, py: 8 },
+        };
+        const sz = sizeMap[stickerSize];
+
+        const renderSticker = (a, forPrint = false) => {
+          const base = {
+            border: '1.5px solid #111', fontFamily: "'Noto Sans KR',sans-serif",
+            pageBreakInside: 'avoid', breakInside: 'avoid', boxSizing: 'border-box',
+            overflow: 'hidden', background: '#fff', color: '#111',
+          };
+          if (stickerSize === '50x15') return (
+            <div key={a.id} style={{ ...base, width: forPrint ? '50mm' : '100%', height: forPrint ? '15mm' : 'auto',
+              padding: '2px 5px', display: 'flex', alignItems: 'center', gap: 6, marginBottom: forPrint ? 0 : 6 }}>
+              <span style={{ fontSize: forPrint ? 8 : 11, fontWeight: 900, background: '#111', color: '#fff',
+                padding: '1px 5px', borderRadius: 3, whiteSpace: 'nowrap', flexShrink: 0 }}>{a.asset_no}</span>
+              <span style={{ fontSize: forPrint ? 9 : 13, fontWeight: 900, flex: 1, overflow: 'hidden',
+                whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>{a.name}</span>
+              <span style={{ fontSize: forPrint ? 7 : 10, color: '#555', whiteSpace: 'nowrap' }}>{a.location}</span>
             </div>
-            {/* 스티커 영역 */}
-            <div id="sticker-print-area">
-              {(stickerTarget === 'all' ? assets : [stickerTarget]).map(a => (
-                <div key={a.id} style={{
-                  border: '2px solid #111', borderRadius: 8, padding: '14px 18px', marginBottom: 12,
-                  fontFamily: "'Noto Sans KR', sans-serif", pageBreakInside: 'avoid'
-                }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: '#555' }}>홍성훈 선거사무소</div>
-                    <div style={{ fontSize: 11, color: '#888' }}>제9회 지방선거</div>
-                  </div>
-                  <div style={{ borderTop: '1px solid #ccc', paddingTop: 8 }}>
-                    <div style={{ display: 'flex', gap: 8, alignItems: 'baseline', marginBottom: 4 }}>
-                      <span style={{ fontSize: 13, fontWeight: 900, background: '#111', color: '#fff', padding: '2px 10px', borderRadius: 4 }}>{a.asset_no}</span>
-                      <span style={{ fontSize: 16, fontWeight: 900 }}>{a.name}</span>
-                    </div>
-                    <table style={{ fontSize: 11, borderCollapse: 'collapse', width: '100%' }}>
-                      <tbody>
-                        <tr><td style={{ color: '#555', paddingRight: 12, paddingBottom: 2 }}>수 량</td><td style={{ fontWeight: 700 }}>{a.quantity}개</td><td style={{ color: '#555', paddingRight: 12, paddingLeft: 16 }}>단 가</td><td style={{ fontWeight: 700 }}>{(a.unit_price||0).toLocaleString()}원</td></tr>
-                        <tr><td style={{ color: '#555', paddingRight: 12, paddingBottom: 2 }}>합 계</td><td style={{ fontWeight: 700, color: '#d00' }}>{(a.total_amount||0).toLocaleString()}원</td><td style={{ color: '#555', paddingRight: 12, paddingLeft: 16 }}>구매일</td><td style={{ fontWeight: 700 }}>{a.purchase_date}</td></tr>
-                        <tr><td style={{ color: '#555', paddingRight: 12 }}>구매처</td><td colSpan={3} style={{ fontWeight: 700 }}>{a.vendor||'-'}</td></tr>
-                        <tr><td style={{ color: '#555', paddingRight: 12 }}>비치장소</td><td colSpan={3} style={{ fontWeight: 700 }}>{a.location}</td></tr>
-                      </tbody>
-                    </table>
-                  </div>
+          );
+          if (stickerSize === '50x30') return (
+            <div key={a.id} style={{ ...base, width: forPrint ? '50mm' : '100%', height: forPrint ? '30mm' : 'auto',
+              padding: '4px 6px', marginBottom: forPrint ? 0 : 8 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
+                <span style={{ fontSize: forPrint ? 6 : 9, color: '#666' }}>홍성훈 선거사무소</span>
+                <span style={{ fontSize: forPrint ? 6 : 9, color: '#999' }}>제9회 지방선거</span>
+              </div>
+              <div style={{ borderTop: '1px solid #ddd', paddingTop: 2, display: 'flex', gap: 5, alignItems: 'center', marginBottom: 3 }}>
+                <span style={{ fontSize: forPrint ? 8 : 11, fontWeight: 900, background: '#111', color: '#fff',
+                  padding: '1px 5px', borderRadius: 3, whiteSpace: 'nowrap' }}>{a.asset_no}</span>
+                <span style={{ fontSize: forPrint ? 9 : 13, fontWeight: 900 }}>{a.name}</span>
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1px 4px', fontSize: forPrint ? 6.5 : 10 }}>
+                <span><span style={{ color: '#666' }}>수량 </span><b>{a.quantity}개</b></span>
+                <span><span style={{ color: '#666' }}>금액 </span><b>{(a.total_amount||0).toLocaleString()}원</b></span>
+                <span><span style={{ color: '#666' }}>구매일 </span><b>{a.purchase_date}</b></span>
+                <span><span style={{ color: '#666' }}>장소 </span><b>{a.location}</b></span>
+              </div>
+            </div>
+          );
+          // 50x50
+          return (
+            <div key={a.id} style={{ ...base, width: forPrint ? '50mm' : '100%', height: forPrint ? '50mm' : 'auto',
+              padding: '6px 8px', marginBottom: forPrint ? 0 : 10 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 3 }}>
+                <span style={{ fontSize: forPrint ? 7 : 10, fontWeight: 700, color: '#444' }}>홍성훈 선거사무소</span>
+                <span style={{ fontSize: forPrint ? 7 : 10, color: '#888' }}>제9회 지방선거</span>
+              </div>
+              <div style={{ borderTop: '1.5px solid #111', paddingTop: 4, marginBottom: 5 }}>
+                <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 3 }}>
+                  <span style={{ fontSize: forPrint ? 9 : 13, fontWeight: 900, background: '#111', color: '#fff',
+                    padding: '2px 8px', borderRadius: 4 }}>{a.asset_no}</span>
+                  <span style={{ fontSize: forPrint ? 11 : 16, fontWeight: 900 }}>{a.name}</span>
                 </div>
-              ))}
+                <table style={{ fontSize: forPrint ? 7 : 11, borderCollapse: 'collapse', width: '100%' }}>
+                  <tbody>
+                    <tr>
+                      <td style={{ color: '#555', paddingRight: 8, paddingBottom: 2 }}>수 량</td>
+                      <td style={{ fontWeight: 700, paddingBottom: 2 }}>{a.quantity}개</td>
+                      <td style={{ color: '#555', paddingRight: 8, paddingLeft: 10, paddingBottom: 2 }}>단 가</td>
+                      <td style={{ fontWeight: 700, paddingBottom: 2 }}>{(a.unit_price||0).toLocaleString()}원</td>
+                    </tr>
+                    <tr>
+                      <td style={{ color: '#555', paddingRight: 8, paddingBottom: 2 }}>합 계</td>
+                      <td style={{ fontWeight: 700, color: '#c00', paddingBottom: 2 }}>{(a.total_amount||0).toLocaleString()}원</td>
+                      <td style={{ color: '#555', paddingRight: 8, paddingLeft: 10, paddingBottom: 2 }}>구매일</td>
+                      <td style={{ fontWeight: 700, paddingBottom: 2 }}>{a.purchase_date}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ color: '#555', paddingRight: 8, paddingBottom: 2 }}>구매처</td>
+                      <td colSpan={3} style={{ fontWeight: 700 }}>{a.vendor||'-'}</td>
+                    </tr>
+                    <tr>
+                      <td style={{ color: '#555', paddingRight: 8 }}>비치장소</td>
+                      <td colSpan={3} style={{ fontWeight: 700 }}>{a.location}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
-            <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
-              <button onClick={() => setStickerTarget(null)} style={{ flex: 1, padding: '11px 0', background: '#eee', border: 'none', borderRadius: 10, fontSize: 13, cursor: 'pointer', fontWeight: 700 }}>닫기</button>
-              <button onClick={() => {
-                const printWin = window.open('', '_blank');
-                const area = document.getElementById('sticker-print-area').innerHTML;
-                printWin.document.write(`
-                  <html><head><title>비품 스티커</title>
-                  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
-                  <style>
-                    body { font-family:'Noto Sans KR',sans-serif; margin: 20px; background:#fff; }
-                    @media print { @page { margin: 10mm; } body { margin: 0; } }
-                  </style></head>
-                  <body>${area}</body></html>
-                `);
-                printWin.document.close();
-                printWin.focus();
-                setTimeout(() => { printWin.print(); printWin.close(); }, 500);
-              }} style={{ flex: 2, padding: '11px 0', background: '#7c3aed', color: '#fff', border: 'none', borderRadius: 10, fontSize: 13, cursor: 'pointer', fontWeight: 700 }}>🖨️ 인쇄하기</button>
+          );
+        };
+
+        const doPrint = () => {
+          const area = document.getElementById('sticker-print-area-inner');
+          if (!area) return;
+          const printWin = window.open('', '_blank');
+          if (!printWin) return;
+          const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>비품 스티커</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family:'Noto Sans KR',sans-serif; background:#fff; }
+  @media print {
+    @page { size: ${sz.w} ${sz.h}; margin: 0; }
+    body { margin: 0; }
+    .sticker-wrap { page-break-after: always; break-after: page; }
+    .sticker-wrap:last-child { page-break-after: avoid; break-after: avoid; }
+  }
+  @media screen {
+    body { padding: 10px; }
+    .sticker-wrap { margin-bottom: 8px; }
+  }
+</style></head><body>${area.innerHTML}</body></html>`;
+          printWin.document.open();
+          printWin.document.write(html);
+          printWin.document.close();
+          printWin.focus();
+          setTimeout(() => { printWin.print(); printWin.close(); }, 600);
+        };
+
+        return (
+          <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', display: 'flex',
+            alignItems: 'center', justifyContent: 'center', zIndex: 2000 }}>
+            <div style={{ background: '#fff', borderRadius: 16, padding: 24, width: '100%', maxWidth: 480,
+              color: '#111', maxHeight: '92vh', overflowY: 'auto' }}>
+              <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 14 }}>
+                🏷️ 스티커 인쇄 {stickerTarget === 'all' ? `(전체 ${stickerList.length}개)` : ''}
+              </div>
+
+              {/* 사이즈 선택 */}
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontSize: 12, color: '#555', marginBottom: 6, fontWeight: 600 }}>스티커 크기 선택</div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  {[
+                    { key: '50x15', label: '50×15mm', desc: '얇은 띠' },
+                    { key: '50x30', label: '50×30mm', desc: '기본형' },
+                    { key: '50x50', label: '50×50mm', desc: '상세형' },
+                  ].map(s => (
+                    <button key={s.key} onClick={() => setStickerSize(s.key)} style={{
+                      flex: 1, padding: '8px 4px', border: stickerSize === s.key ? '2px solid #7c3aed' : '1.5px solid #ccc',
+                      borderRadius: 8, background: stickerSize === s.key ? '#f3eeff' : '#f9f9f9',
+                      cursor: 'pointer', textAlign: 'center'
+                    }}>
+                      <div style={{ fontSize: 12, fontWeight: 700, color: stickerSize === s.key ? '#7c3aed' : '#333' }}>{s.label}</div>
+                      <div style={{ fontSize: 10, color: '#888', marginTop: 2 }}>{s.desc}</div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* 미리보기 */}
+              <div style={{ background: '#f5f5f5', borderRadius: 8, padding: 12, marginBottom: 16 }}>
+                <div style={{ fontSize: 11, color: '#888', marginBottom: 8 }}>미리보기 (실제 인쇄 크기와 다를 수 있음)</div>
+                <div id="sticker-print-area-inner">
+                  {stickerList.map(a => (
+                    <div key={a.id} className="sticker-wrap">
+                      {renderSticker(a, false)}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8 }}>
+                <button onClick={() => setStickerTarget(null)} style={{
+                  flex: 1, padding: '11px 0', background: '#eee', border: 'none',
+                  borderRadius: 10, fontSize: 13, cursor: 'pointer', fontWeight: 700
+                }}>닫기</button>
+                <button onClick={doPrint} style={{
+                  flex: 2, padding: '11px 0', background: '#7c3aed', color: '#fff', border: 'none',
+                  borderRadius: 10, fontSize: 13, cursor: 'pointer', fontWeight: 700
+                }}>🖨️ 인쇄하기 ({stickerSize}mm)</button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* 토스트 */}
       {msg && (
