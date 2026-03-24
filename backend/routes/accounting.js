@@ -695,90 +695,25 @@ router.post('/sheets/sync', requireAccountant, async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
-// ── 테스트 영수증 삽입 (admin 전용, 개발/테스트용) ──────
-router.post('/test/seed-receipt', requireAdmin, async (req, res) => {
+// ── 회계 전체 초기화 (admin 전용) ──────────────────────
+router.delete('/reset', requireAdmin, async (req, res) => {
   try {
-    const { v4: uuidv4 } = require('uuid');
-    const rows = await db.all(`
-      INSERT INTO acct_receipts (image_path, image_url, ocr_date, ocr_amount, ocr_vendor, ocr_vendor_reg_no, ocr_receipt_type, ocr_confidence, category_suggestion, reimbursable_guess, status, uploaded_by, note)
-      VALUES
-        ('/receipts/test1.jpg', null, '2026-03-20', 220000, '홍캠프인쇄소', '123-45-67890', '세금계산서', 0.92, '홍보물제작비', true, 'PENDING', $1, '현수막 500부 제작'),
-        ('/receipts/test2.jpg', null, '2026-03-21', 85000,  '캠프식당',     '234-56-78901', '간이영수증',   0.85, '식비',         true, 'PENDING', $1, '캠프 회의 식사비'),
-        ('/receipts/test3.jpg', null, '2026-03-22', 45000,  'GS25편의점',   '345-67-89012', '신용카드매출전표', 0.90, '다과음료비',  true, 'PENDING', $1, '다과 구매')
-      RETURNING *
-    `, [req.user.id]);
-    res.json({ success: true, data: { inserted: rows.length, message: `테스트 영수증 ${rows.length}건 추가됨` } });
+    await db.run('DELETE FROM acct_assets');
+    await db.run('DELETE FROM acct_staff_payments');
+    await db.run('DELETE FROM acct_sponsor_expense');
+    await db.run('DELETE FROM acct_sponsor_income');
+    await db.run('DELETE FROM acct_sms_raw');
+    await db.run('DELETE FROM acct_transactions');
+    await db.run('DELETE FROM acct_receipts');
+    // 시퀀스 초기화 (PostgreSQL)
+    try {
+      await db.run(`ALTER SEQUENCE IF EXISTS acct_assets_id_seq RESTART WITH 1`);
+      await db.run(`ALTER SEQUENCE IF EXISTS acct_transactions_id_seq RESTART WITH 1`);
+      await db.run(`ALTER SEQUENCE IF EXISTS acct_receipts_id_seq RESTART WITH 1`);
+    } catch (_) { /* SQLite는 시퀀스 없음 — 무시 */ }
+    autoSync();
+    res.json({ success: true, data: { message: '회계 데이터가 초기화되었습니다.' } });
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
-});
-
-// ── 구글 시트 연결 진단 (admin) ────────────────────────
-router.get('/sheets/diagnose', requireAdmin, async (req, res) => {
-  const result = { env: {}, auth: null, spreadsheet: null, error: null };
-  try {
-    result.env.GOOGLE_SHEET_ID    = process.env.GOOGLE_SHEET_ID    ? '✅ 설정됨 (' + process.env.GOOGLE_SHEET_ID + ')' : '❌ 미설정';
-    result.env.FIREBASE_CLIENT_EMAIL = process.env.FIREBASE_CLIENT_EMAIL ? '✅ ' + process.env.FIREBASE_CLIENT_EMAIL : '❌ 미설정';
-    result.env.FIREBASE_PRIVATE_KEY  = process.env.FIREBASE_PRIVATE_KEY  ? '✅ 설정됨 (길이:' + process.env.FIREBASE_PRIVATE_KEY.length + ')' : '❌ 미설정';
-
-    const { google } = require('googleapis');
-    const auth = new google.auth.JWT(
-      process.env.FIREBASE_CLIENT_EMAIL,
-      null,
-      process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-      ['https://www.googleapis.com/auth/spreadsheets']
-    );
-    const token = await auth.getAccessToken();
-    result.auth = token.token ? '✅ 인증 토큰 획득 성공' : '❌ 토큰 없음';
-
-    const sheets = google.sheets({ version: 'v4', auth });
-    const meta = await sheets.spreadsheets.get({ spreadsheetId: (process.env.GOOGLE_SHEET_ID||'').trim() });
-    result.spreadsheet = '✅ 스프레드시트 접근 성공: ' + meta.data.properties.title;
-    result.sheets = meta.data.sheets.map(s => s.properties.title);
-
-    // 쓰기 테스트 - 기존 첫번째 탭에 테스트값 쓰기
-    const firstSheet = meta.data.sheets[0]?.properties?.title;
-    if (firstSheet) {
-      try {
-        await sheets.spreadsheets.values.update({
-          spreadsheetId: (process.env.GOOGLE_SHEET_ID||'').trim(),
-          range: `${firstSheet}!Z1`,
-          valueInputOption: 'RAW',
-          requestBody: { values: [['test_ok']] }
-        });
-        result.writeTest = '✅ 쓰기 성공 (' + firstSheet + '!Z1)';
-        // 테스트값 지우기
-        await sheets.spreadsheets.values.clear({
-          spreadsheetId: (process.env.GOOGLE_SHEET_ID||'').trim(),
-          range: `${firstSheet}!Z1`
-        });
-      } catch (e2) {
-        result.writeTest = '❌ 쓰기 실패: ' + e2.message;
-      }
-
-      // addSheet 테스트
-      try {
-        await sheets.spreadsheets.batchUpdate({
-          spreadsheetId: (process.env.GOOGLE_SHEET_ID||'').trim(),
-          requestBody: { requests: [{ addSheet: { properties: { title: '_test_sheet_' } } }] }
-        });
-        result.addSheetTest = '✅ 시트 추가 성공';
-        // 테스트 시트 삭제
-        const meta2 = await sheets.spreadsheets.get({ spreadsheetId: (process.env.GOOGLE_SHEET_ID||'').trim() });
-        const testSheetId = meta2.data.sheets.find(s => s.properties.title === '_test_sheet_')?.properties?.sheetId;
-        if (testSheetId !== undefined) {
-          await sheets.spreadsheets.batchUpdate({
-            spreadsheetId: (process.env.GOOGLE_SHEET_ID||'').trim(),
-            requestBody: { requests: [{ deleteSheet: { sheetId: testSheetId } }] }
-          });
-        }
-      } catch (e3) {
-        result.addSheetTest = '❌ 시트 추가 실패: ' + e3.message;
-      }
-    }
-  } catch (e) {
-    result.error = e.message;
-    result.errorDetail = e.response?.data || null;
-  }
-  res.json({ success: true, data: result });
 });
 
 // ── 시트 URL 반환 ──────────────────────────────────────

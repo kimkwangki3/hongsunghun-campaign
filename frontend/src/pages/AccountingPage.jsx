@@ -148,24 +148,19 @@ export default function AccountingPage() {
     } finally { setSyncLoading(false); }
   }
 
-  async function handleSheetsDiagnose() {
+  async function handleReset() {
+    const confirmed = window.confirm(
+      '⚠️ 회계 초기화\n\n모든 거래내역, 영수증, SMS, 비품, 수당 데이터가 삭제됩니다.\n\n정말 초기화하시겠습니까?\n(이 작업은 되돌릴 수 없습니다)'
+    );
+    if (!confirmed) return;
+    const confirmed2 = window.confirm('마지막 확인: 회계 데이터를 완전히 삭제합니다.');
+    if (!confirmed2) return;
     try {
-      const r = await api.get('/accounting/sheets/diagnose');
-      const d = r.data.data;
-      const msg = [
-        d.env.GOOGLE_SHEET_ID,
-        d.env.FIREBASE_CLIENT_EMAIL,
-        d.env.FIREBASE_PRIVATE_KEY,
-        d.auth || '',
-        d.spreadsheet || '',
-        d.error ? '❌ 오류: ' + d.error : '',
-        d.sheets ? '탭목록: ' + d.sheets.join(', ') : '',
-        d.writeTest || '',
-        d.addSheetTest || '',
-      ].filter(Boolean).join('\n');
-      alert('📊 구글 시트 진단 결과\n\n' + msg);
+      await api.delete('/accounting/reset');
+      toast('✅ 회계 데이터가 초기화되었습니다.');
+      loadSummary(); loadTransactions(); loadPendingReceipts(); loadPendingSms();
     } catch (e) {
-      alert('진단 실패: ' + (e.response?.data?.message || e.message));
+      toast('❌ ' + (e.response?.data?.message || '초기화 실패'));
     }
   }
 
@@ -405,10 +400,10 @@ export default function AccountingPage() {
               }}>📊 시트</a>
             )}
             {user?.role === 'admin' && (
-              <button onClick={handleSheetsDiagnose} style={{
-                background:'#1a1a2e', color:'#8896b3', border:'1px solid #1e2d45',
+              <button onClick={handleReset} style={{
+                background:'#2a0a0a', color:'#f87171', border:'1px solid #f8717144',
                 borderRadius:8, padding:'7px 10px', fontSize:11, cursor:'pointer'
-              }}>🔍 진단</button>
+              }}>🗑️ 초기화</button>
             )}
             {isAccountant && (
               <button onClick={handleSheetsSync} disabled={syncLoading} style={{
@@ -756,17 +751,6 @@ export default function AccountingPage() {
                 marginLeft: 'auto', background: S.surface2, color: S.sub, border: S.border,
                 borderRadius: 8, padding: '5px 10px', fontSize: 11, cursor: 'pointer'
               }}>새로고침</button>
-              {user?.role === 'admin' && (
-                <button onClick={async () => {
-                  try {
-                    const r = await api.post('/accounting/test/seed-receipt');
-                    toast(`✅ ${r.data.data.message}`); loadPendingReceipts();
-                  } catch (e) { toast(`❌ ${e.response?.data?.message || '실패'}`); }
-                }} style={{
-                  background: '#2a1a00', color: S.yellow, border: '1px solid #ffa50244',
-                  borderRadius: 8, padding: '5px 10px', fontSize: 11, cursor: 'pointer'
-                }}>🧪 테스트</button>
-              )}
             </div>
 
             {/* ── 미처리 영수증 서브탭 ── */}
