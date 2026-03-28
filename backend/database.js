@@ -252,6 +252,12 @@ async function initDB() {
   // 마이그레이션: is_asset 컬럼 (기존 DB 대응)
   await db.run(`ALTER TABLE acct_transactions ADD COLUMN IF NOT EXISTS is_asset BOOLEAN DEFAULT FALSE`);
   await db.run(`ALTER TABLE acct_transactions ADD COLUMN IF NOT EXISTS asset_id INTEGER REFERENCES acct_assets(id)`);
+  // 마이그레이션: 선관위 양식 컬럼 추가
+  await db.run(`ALTER TABLE acct_transactions ADD COLUMN IF NOT EXISTS subcategory VARCHAR(50)`);       // 지출유형 중분류
+  await db.run(`ALTER TABLE acct_transactions ADD COLUMN IF NOT EXISTS detail_category VARCHAR(50)`);   // 지출유형 소분류
+  await db.run(`ALTER TABLE acct_transactions ADD COLUMN IF NOT EXISTS counterparty TEXT`);              // 수입제공자/지출대상
+  await db.run(`ALTER TABLE acct_transactions ADD COLUMN IF NOT EXISTS counterparty_no VARCHAR(30)`);    // 생년월일/사업자번호
+  await db.run(`ALTER TABLE acct_transactions ADD COLUMN IF NOT EXISTS has_receipt VARCHAR(1) DEFAULT 'N'`); // 증빙서류첨부 Y/N
 
   // ── 후원회 전용 SMS 테이블 ─────────────────────────────────────────
   await db.run(`

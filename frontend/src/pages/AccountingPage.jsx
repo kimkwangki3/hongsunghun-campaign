@@ -47,25 +47,70 @@ function GaugeBar({ pct, color = S.accent, warn = 80, danger = 95 }) {
 const TABS = ['대시보드', '수입/지출', '미처리영수증', 'SMS', '후원회', '수당', '영수증', '비품관리'];
 const ACCT_TABS = ['대시보드', '수입/지출']; // 일반 사용자용
 
-// ── 선관위 양식 과목 체계 ──────────────────────────────
-// 수입 과목 (계정과목)
-const INCOME_CATEGORIES = ['자기부담금', '차입금', '정당지원금', '기탁금반환금', '기타수입'];
+// ── 선관위 정치자금회계관리 프로그램 과목 체계 ─────────────────
 
-// 지출 계정과목 (대분류) → 세목 (소분류) 매핑
-// 비선거비용 계정 → cost_type 자동 non_election_cost
-const EXPENSE_ACCOUNTS = {
-  '선전비':           ['인쇄물제작비(홍보물)', '현수막·포스터제작비', '신문광고비', '방송광고비', '인터넷·SNS광고비', '선거공보제작비'],
-  '사무소설치유지비':  ['사무소임차료', '집기·비품비', '수도광열비', '사무용품비', '기타사무소비'],
-  '인건비·수당':      ['선거사무원수당', '선거사무장수당', '선거연락소장수당', '회계책임자수당'],
-  '실비':             ['일비', '식비', '교통비'],
-  '통신비':           ['전화·인터넷비', '우편비'],
-  '차량비':           ['차량유류비', '차량임차료', '차량수리비'],
-  '집회비':           ['다과·음료비', '행사진행비'],
-  '기탁금':           ['선관위기탁금'],
-  '비선거비용':       ['정치활동비', '기타비선거비용'],  // ← 이 계정은 non_election_cost 자동
+// 수입 — 계정 목록
+const INCOME_ACCOUNT_TYPES = ['후보자등자산', '후원회기부금', '보조금', '보조금외지원금'];
+
+// 과목 (수입·지출 공통)
+const SUBJECTS = ['선거비용', '선거비용외정치자금'];
+
+// 지출 — 계정 목록
+const EXPENSE_ACCOUNT_TYPES = ['후보자등자산', '후원회기부금'];
+
+// 지출유형 (대분류 → 중분류 → 소분류) — 선관위 프로그램 기준
+const EXPENSE_TYPES = {
+  '인쇄물': {
+    '선거벽보':       ['기획·도안료', '제작비', '부착비'],
+    '선거공보':       ['기획·도안료', '제작비', '발송비'],
+    '선거공약서':     ['기획·도안료', '제작비'],
+    '명함':           ['기획·도안료', '제작비'],
+    '예비후보자홍보물': ['기획·도안료', '제작비', '발송비'],
+    '현수막':         ['기획·도안료', '제작비', '설치·철거비'],
+    '어깨띠·모자등':  ['제작비'],
+    '기타인쇄물':     ['기획·도안료', '제작비'],
+  },
+  '시설물': {
+    '간판':           ['제작비', '설치비'],
+    '기타시설물':     ['제작비', '설치비'],
+  },
+  '선거사무소': {
+    '임차료':         ['사무소임차료'],
+    '비품·집기':      ['집기비품비', '전자기기', '기타비품'],
+    '수도광열비':     ['전기료', '수도료', '가스료'],
+    '사무용품':       ['사무용품비'],
+    '개소식관련':     ['다과비', '행사비', '기타경비'],
+  },
+  '선거연락소': {
+    '임차료':         ['연락소임차료'],
+    '비품·집기':      ['집기비품비'],
+    '수도광열비':     ['수도광열비'],
+  },
+  '인건비': {
+    '선거사무원':     ['수당'],
+    '선거사무장':     ['수당'],
+    '선거연락소장':   ['수당'],
+    '회계책임자':     ['수당'],
+    '활동보조인':     ['수당'],
+  },
+  '교통·통신': {
+    '전화·인터넷':   ['전화요금', '인터넷요금'],
+    '우편료':         ['우편료'],
+    '차량관련':       ['유류비', '임차료', '수리비', '통행료'],
+  },
+  '실비': {
+    '일비':           ['일비'],
+    '식비':           ['식비'],
+    '교통비':         ['교통비'],
+  },
+  '집회': {
+    '소규모모임':     ['다과비', '장소임차료'],
+    '공개장소연설':   ['장비임차료', '기타'],
+  },
+  '기타': {
+    '기타선거비용':   ['기타'],
+  },
 };
-// 비선거비용 계정과목 목록
-const NON_ELECTION_ACCOUNTS = new Set(['비선거비용']);
 
 const ASSET_LOCATIONS = ['선거사무소 본소', '선거연락소 1', '선거연락소 2', '선거연락소 3', '기타'];
 
@@ -245,7 +290,7 @@ export default function AccountingPage() {
       await api.post(`/accounting/sms/${sms.id}/approve`, {
         date: sms.date || new Date().toISOString().split('T')[0],
         amount: sms.amount, type: sms.type === 'income' ? 'income' : 'expense',
-        cost_type: sms.cost_type || 'election_cost',
+        cost_type: sms.cost_type || '선거비용',
         category: sms.category,
         reimbursable: (sms.date && sms.date < '2026-05-14') ? false : (sms.reimbursable ?? true),
         description: sms.counterpart || sms.raw_text.substring(0, 40),
@@ -414,7 +459,7 @@ export default function AccountingPage() {
               }}>{syncLoading ? '동기화중...' : '🔄 동기화'}</button>
             )}
             {isAccountant && (
-              <button onClick={() => { setModal('tx'); setForm({ date: today, type: 'expense', cost_type: 'election_cost' }); }} style={{
+              <button onClick={() => { setModal('tx'); setForm({ date: today, type: 'expense', cost_type: '', has_receipt: 'N' }); }} style={{
                 background: S.accent, color: '#fff', border: 'none', borderRadius: 8,
                 padding: '7px 14px', fontSize: 12, fontWeight: 700, cursor: 'pointer'
               }}>+ 등록</button>
@@ -683,7 +728,7 @@ export default function AccountingPage() {
                   color: txFilter.type === v ? '#fff' : S.sub, border: S.border
                 }}>{l}</button>
               ))}
-              {[['', '전체'], ['election_cost', '선거비용'], ['non_election_cost', '비선거비용']].map(([v, l]) => (
+              {[['', '전체'], ['선거비용', '선거비용'], ['선거비용외정치자금', '선거비용외']].map(([v, l]) => (
                 <button key={v} onClick={() => setTxFilter(f => ({ ...f, cost_type: v }))} style={{
                   padding: '5px 12px', fontSize: 11, borderRadius: 20, cursor: 'pointer',
                   background: txFilter.cost_type === v ? '#7c3aed' : S.surface2,
@@ -797,10 +842,13 @@ export default function AccountingPage() {
                         setForm({
                           date: r.ocr_date ? String(r.ocr_date).split('T')[0] : today,
                           type: 'expense',
-                          cost_type: 'election_cost',
+                          cost_type: '',
+                          has_receipt: 'Y',
                           category: r.category_suggestion || '',
                           amount: r.ocr_amount || '',
                           description: r.note || r.ocr_vendor || '',
+                          counterparty: r.ocr_vendor || '',
+                          counterparty_no: r.ocr_vendor_reg_no || '',
                           receipt_id: r.id,
                           reimbursable: (r.ocr_date && r.ocr_date < '2026-05-14') ? false : (r.reimbursable_guess ?? true),
                         });
@@ -837,7 +885,7 @@ export default function AccountingPage() {
                       <button onClick={() => {
                         setModal('tx');
                         setForm({
-                          date: today, type: 'expense', cost_type: 'election_cost',
+                          date: today, type: 'expense', cost_type: '', has_receipt: 'N',
                           description: sms.raw_text?.substring(0, 50) || '',
                           sms_id: sms.id,
                         });
@@ -1024,75 +1072,112 @@ export default function AccountingPage() {
 
                 {/* ② 구분: 수입 / 지출 */}
                 <FormRow label="구분 (수입·지출)">
-                  <select value={form.type||'expense'} onChange={e => setForm(f => ({...f, type: e.target.value, account: '', category: '', cost_type: 'election_cost'}))} style={inputStyle}>
+                  <select value={form.type||'expense'} onChange={e => setForm(f => ({
+                    ...f, type: e.target.value,
+                    account_type: '', cost_type: '', category: '', subcategory: '', detail_category: '',
+                  }))} style={inputStyle}>
                     <option value="expense">지출</option>
                     <option value="income">수입</option>
                   </select>
                 </FormRow>
 
-                {/* ③-수입: 수입과목(계정과목) */}
-                {form.type === 'income' && (
-                  <FormRow label="수입과목 (계정과목)">
-                    <select value={form.account_type||''} onChange={e => setForm(f => ({...f, account_type: e.target.value, category: e.target.value}))} style={inputStyle}>
+                {/* ③ 계정 */}
+                <FormRow label="*계정">
+                  <select value={form.account_type||''} onChange={e => setForm(f => ({
+                    ...f, account_type: e.target.value, cost_type: '', category: '', subcategory: '', detail_category: '',
+                  }))} style={inputStyle}>
+                    <option value="">— 선택 —</option>
+                    {(form.type === 'income' ? INCOME_ACCOUNT_TYPES : EXPENSE_ACCOUNT_TYPES).map(a => (
+                      <option key={a} value={a}>{a}</option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: 10, color: S.muted, marginTop: 2 }}>
+                    {form.type === 'income' ? '후보자등자산·후원회기부금·보조금·보조금외지원금' : '후보자등자산·후원회기부금'}
+                  </div>
+                </FormRow>
+
+                {/* ④ 과목 */}
+                {form.account_type && (
+                  <FormRow label="*과목">
+                    <select value={form.cost_type||''} onChange={e => setForm(f => ({...f, cost_type: e.target.value}))} style={inputStyle}>
                       <option value="">— 선택 —</option>
-                      {INCOME_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                      {SUBJECTS.map(s => <option key={s} value={s}>{s}</option>)}
                     </select>
-                    <div style={{ fontSize: 10, color: S.muted, marginTop: 3 }}>자기부담금·차입금·정당지원금·기탁금반환금 중 선택</div>
+                    {form.date && form.date < '2026-05-14' && form.cost_type === '선거비용' && (
+                      <div style={{ fontSize: 10, color: S.yellow, marginTop: 2 }}>예비후보자 기간 — 선거비용 보전 불가</div>
+                    )}
                   </FormRow>
                 )}
 
-                {/* ③-지출: 계정과목(대분류) → 세목(소분류) → 비용구분 자동판별 */}
-                {form.type === 'expense' && (<>
-                  <FormRow label="계정과목 (대분류)">
-                    <select value={form.account||''} onChange={e => {
-                      const acct = e.target.value;
-                      const isNonElection = NON_ELECTION_ACCOUNTS.has(acct);
-                      setForm(f => ({
-                        ...f,
-                        account: acct,
-                        category: '',
-                        cost_type: isNonElection ? 'non_election_cost' : 'election_cost',
-                      }));
-                    }} style={inputStyle}>
+                {/* ⑤ 지출유형 대·중·소분류 (지출만) */}
+                {form.type === 'expense' && form.cost_type && (<>
+                  <FormRow label="지출유형 (대분류)">
+                    <select value={form.category||''} onChange={e => setForm(f => ({
+                      ...f, category: e.target.value, subcategory: '', detail_category: '',
+                    }))} style={inputStyle}>
                       <option value="">— 선택 —</option>
-                      {Object.keys(EXPENSE_ACCOUNTS).map(a => (
-                        <option key={a} value={a}>{a}</option>
-                      ))}
+                      {Object.keys(EXPENSE_TYPES).map(k => <option key={k} value={k}>{k}</option>)}
                     </select>
                   </FormRow>
 
-                  {form.account && (
-                    <FormRow label={`세목 (${form.account} 소분류)`}>
-                      <select value={form.category||''} onChange={e => setForm(f => ({...f, category: e.target.value}))} style={inputStyle}>
+                  {form.category && EXPENSE_TYPES[form.category] && (
+                    <FormRow label="지출유형 (중분류)">
+                      <select value={form.subcategory||''} onChange={e => setForm(f => ({
+                        ...f, subcategory: e.target.value, detail_category: '',
+                      }))} style={inputStyle}>
                         <option value="">— 선택 —</option>
-                        {(EXPENSE_ACCOUNTS[form.account]||[]).map(c => (
-                          <option key={c} value={c}>{c}</option>
-                        ))}
+                        {Object.keys(EXPENSE_TYPES[form.category]).map(k => <option key={k} value={k}>{k}</option>)}
                       </select>
                     </FormRow>
                   )}
 
-                  {/* 비용구분: 계정 선택 시 자동 판별 + 수동 변경 가능 */}
-                  <div style={{
-                    background: S.surface2, border: S.border, borderRadius: 8,
-                    padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 8
-                  }}>
-                    <div style={{ fontSize: 11, color: S.sub, minWidth: 56 }}>비용구분</div>
-                    <div style={{ display: 'flex', gap: 6 }}>
-                      {[['election_cost','선거비용 (보전가능)'],['non_election_cost','비선거비용']].map(([val, lbl]) => (
-                        <button key={val} onClick={() => setForm(f => ({...f, cost_type: val}))} style={{
-                          padding: '4px 12px', borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: 'pointer', border: 'none',
-                          background: form.cost_type === val ? (val === 'election_cost' ? S.accent : S.yellow) : S.surface,
-                          color: form.cost_type === val ? '#fff' : S.muted,
-                        }}>{lbl}</button>
-                      ))}
-                    </div>
-                    {form.date && form.date < '2026-05-14' && form.cost_type === 'election_cost' && (
-                      <span style={{ fontSize: 10, color: S.yellow }}>(보전불가)</span>
-                    )}
-                  </div>
+                  {form.subcategory && EXPENSE_TYPES[form.category]?.[form.subcategory] && (
+                    <FormRow label="지출유형 (소분류)">
+                      <select value={form.detail_category||''} onChange={e => setForm(f => ({...f, detail_category: e.target.value}))} style={inputStyle}>
+                        <option value="">— 선택 —</option>
+                        {EXPENSE_TYPES[form.category][form.subcategory].map(k => <option key={k} value={k}>{k}</option>)}
+                      </select>
+                    </FormRow>
+                  )}
+                </>)}
 
-                  {/* ④ 비품 여부 — 지출 계정 선택 후 바로 확인 */}
+                {/* ⑥ 금액 */}
+                <FormRow label="*금액 (원)"><AmountInput value={form.amount} onChange={e => setForm(f => ({...f,amount:parseInt(e.target.value)||0}))} /></FormRow>
+
+                {/* ⑦ 내역 */}
+                <FormRow label="*내역">
+                  <input type="text" placeholder="거래 내용 상세" value={form.description||''} onChange={e => setForm(f => ({...f,description:e.target.value}))} style={inputStyle} />
+                </FormRow>
+
+                {/* ⑧ 수입제공자 / 지출대상 */}
+                <FormRow label={form.type === 'income' ? '*수입제공자' : '*지출대상'}>
+                  <input type="text" placeholder={form.type === 'income' ? '수입제공자 성명 또는 업체명' : '지출대상 성명 또는 업체명'} value={form.counterparty||''} onChange={e => setForm(f => ({...f,counterparty:e.target.value}))} style={inputStyle} />
+                </FormRow>
+
+                {/* ⑨ 생년월일 / 사업자번호 */}
+                <FormRow label="생년월일(사업자번호)">
+                  <input type="text" placeholder="예: 123-45-67890 또는 19800101" value={form.counterparty_no||''} onChange={e => setForm(f => ({...f,counterparty_no:e.target.value}))} style={inputStyle} />
+                </FormRow>
+
+                {/* ⑩ 증빙서류 첨부 */}
+                <div style={{
+                  background: S.surface2, border: S.border, borderRadius: 8,
+                  padding: '8px 12px', display: 'flex', alignItems: 'center', gap: 10
+                }}>
+                  <div style={{ fontSize: 11, color: S.sub, minWidth: 70 }}>*증빙서류첨부</div>
+                  <div style={{ display: 'flex', gap: 6 }}>
+                    {['Y','N'].map(v => (
+                      <button key={v} onClick={() => setForm(f => ({...f, has_receipt: v}))} style={{
+                        padding: '4px 16px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer', border: 'none',
+                        background: form.has_receipt === v ? (v === 'Y' ? S.green : S.yellow) : S.surface,
+                        color: form.has_receipt === v ? '#fff' : S.muted,
+                      }}>{v}</button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* ⑪ 비품 여부 (지출만) */}
+                {form.type === 'expense' && (<>
                   <div style={{
                     background: form.is_asset ? '#1a0a2e' : S.surface2,
                     border: form.is_asset ? '1px solid #7c3aed' : S.border,
@@ -1125,11 +1210,7 @@ export default function AccountingPage() {
                   )}
                 </>)}
 
-                {/* 금액·내용·비고 — 수입/지출 공통 */}
-                <FormRow label="금액 (원)"><AmountInput value={form.amount} onChange={e => setForm(f => ({...f,amount:parseInt(e.target.value)||0}))} /></FormRow>
-                <FormRow label="내용·적요">
-                  <input type="text" placeholder="지출 내용 또는 거래처명" value={form.description||''} onChange={e => setForm(f => ({...f,description:e.target.value}))} style={inputStyle} />
-                </FormRow>
+                {/* ⑫ 비고 */}
                 <FormRow label="비고">
                   <input type="text" value={form.note||''} onChange={e => setForm(f => ({...f,note:e.target.value}))} style={inputStyle} />
                 </FormRow>

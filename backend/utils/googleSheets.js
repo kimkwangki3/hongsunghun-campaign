@@ -4,8 +4,8 @@ const { google } = require('googleapis');
 
 // ── 시트별 컬럼 헤더 (선관위 회계보고서 양식 기준) ─────────────────
 const SHEET_HEADERS = {
-  '수입지출장부':   ['번호','날짜','구분','비용구분','과목','내용/거래처','금액(원)','영수증번호','계좌확인','보전가능','비품여부','비품등록완료','비고','등록자','등록일시'],
-  '선거비용명세':   ['번호','지출일','비용과목','내용/거래처','금액(원)','영수증종류','영수증번호','보전여부','비고'],
+  '수입지출장부':   ['번호','*계정','*과목','*날짜','*내역','*수입제공자/지출대상','생년월일(사업자번호)','*금액(원)','지출유형(대)','지출유형(중)','지출유형(소)','*증빙서류첨부','영수증번호','계좌확인','보전가능','비품여부','비품등록완료','비고','등록자','등록일시'],
+  '선거비용명세':   ['번호','지출일','계정','과목','지출유형(대/중/소)','지출대상','금액(원)','증빙서류','영수증번호','보전여부','비고'],
   '후원회수입':     ['번호','수입일','기부자성명','연락처','은행','계좌','금액(원)','영수증번호','입력방법','비고'],
   '후원회지출':     ['번호','지출일','지출과목','이체목적','수신계좌','금액(원)','영수증번호','입력방법','비고'],
   '후원자목록':     ['기부자','연락처','은행','입금횟수','합계금액(원)','한도대비(%)','첫입금일','최근입금일'],
@@ -144,12 +144,22 @@ async function syncAll(db) {
   );
   if (txRows.length > 0) {
     const txValues = txRows.map((t, i) => [
-      i+1, t.date,
-      t.type === 'income' ? '수입' : '지출',
-      t.cost_type === 'election_cost' ? '선거비용' : t.cost_type === 'non_election_cost' ? '비선거비용' : '',
-      t.category || '', t.description || '', t.amount,
-      t.receipt_no || '', t.account_verified ? 'O' : '', t.reimbursable ? 'O' : '',
-      t.is_asset ? '✅비품' : '',
+      i+1,
+      t.account_type || '',                   // *계정
+      t.cost_type || '',                       // *과목
+      t.date,                                  // *날짜
+      t.description || '',                     // *내역
+      t.counterparty || '',                    // *수입제공자/지출대상
+      t.counterparty_no || '',                 // 생년월일(사업자번호)
+      t.amount,                                // *금액
+      t.category || '',                        // 지출유형(대)
+      t.subcategory || '',                     // 지출유형(중)
+      t.detail_category || '',                 // 지출유형(소)
+      t.has_receipt || (t.receipt_id ? 'Y' : 'N'), // *증빙서류첨부
+      t.receipt_no || '',                      // 영수증번호
+      t.account_verified ? 'O' : '',           // 계좌확인
+      t.reimbursable ? 'O' : '',               // 보전가능
+      t.is_asset ? '✅비품' : '',               // 비품여부
       t.asset_id ? `비-${String(t.asset_id).padStart(3,'0')}` : (t.is_asset ? '❌미등록' : ''),
       t.note || '', t.created_by_name || '',
       t.created_at ? new Date(t.created_at).toLocaleString('ko-KR') : '',
@@ -157,8 +167,12 @@ async function syncAll(db) {
     await client.spreadsheets.values.update({ spreadsheetId, range: '수입지출장부!A2', valueInputOption: 'USER_ENTERED', requestBody: { values: txValues } });
 
     const elecValues = txRows
-      .filter(t => t.type === 'expense' && t.cost_type === 'election_cost')
-      .map((t, i) => [i+1, t.date, t.category||'', t.description||'', t.amount, '', t.receipt_no||'', t.reimbursable?'O':'', t.note||'']);
+      .filter(t => t.type === 'expense' && t.cost_type === '선거비용')
+      .map((t, i) => [
+        i+1, t.date, t.account_type||'', t.cost_type||'',
+        [t.category, t.subcategory, t.detail_category].filter(Boolean).join('/'),
+        t.counterparty||'', t.amount, t.has_receipt||'N', t.receipt_no||'', t.reimbursable?'O':'', t.note||''
+      ]);
     if (elecValues.length > 0) {
       await client.spreadsheets.values.update({ spreadsheetId, range: '선거비용명세!A2', valueInputOption: 'USER_ENTERED', requestBody: { values: elecValues } });
     }

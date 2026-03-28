@@ -41,8 +41,8 @@ router.get('/summary', requireAccountingView, async (req, res) => {
     const [inc, exp, elec, nonElec, sponsorInc, sponsorExp, pendingSms] = await Promise.all([
       db.get(`SELECT COALESCE(SUM(amount),0) t FROM acct_transactions WHERE type='income'`),
       db.get(`SELECT COALESCE(SUM(amount),0) t FROM acct_transactions WHERE type='expense'`),
-      db.get(`SELECT COALESCE(SUM(amount),0) t FROM acct_transactions WHERE type='expense' AND cost_type='election_cost'`),
-      db.get(`SELECT COALESCE(SUM(amount),0) t FROM acct_transactions WHERE type='expense' AND cost_type='non_election_cost'`),
+      db.get(`SELECT COALESCE(SUM(amount),0) t FROM acct_transactions WHERE type='expense' AND cost_type='선거비용'`),
+      db.get(`SELECT COALESCE(SUM(amount),0) t FROM acct_transactions WHERE type='expense' AND cost_type='선거비용외정치자금'`),
       db.get(`SELECT COALESCE(SUM(amount),0) t FROM acct_sponsor_income`),
       db.get(`SELECT COALESCE(SUM(amount),0) t FROM acct_sponsor_expense`),
       getPendingCount(),
@@ -96,9 +96,9 @@ router.get('/transactions', requireAccountingView, async (req, res) => {
 router.post('/transactions', requireAccountant, async (req, res) => {
   try {
     const d = req.body;
-    if (d.cost_type === 'election_cost' && d.type === 'expense') {
+    if (d.cost_type === '선거비용' && d.type === 'expense') {
       const used = await db.get(
-        `SELECT COALESCE(SUM(amount),0) t FROM acct_transactions WHERE type='expense' AND cost_type='election_cost'`
+        `SELECT COALESCE(SUM(amount),0) t FROM acct_transactions WHERE type='expense' AND cost_type='선거비용'`
       );
       if (parseInt(used.t) + d.amount > LIMIT) {
         return res.status(400).json({ success: false, message: `선거비용제한액 초과. 현재: ${used.t}원 / 제한: ${LIMIT.toLocaleString()}원` });
@@ -106,7 +106,7 @@ router.post('/transactions', requireAccountant, async (req, res) => {
     }
     // 영수증 번호 자동 채번
     if (!d.receipt_no) {
-      const prefix = d.type === 'income' ? '수' : (d.cost_type === 'election_cost' ? '자(비)' : '자');
+      const prefix = d.type === 'income' ? '수' : (d.cost_type === '선거비용' ? '자(비)' : '자');
       const last = await db.get(
         `SELECT receipt_no FROM acct_transactions WHERE receipt_no LIKE $1 ORDER BY id DESC LIMIT 1`,
         [`${prefix}-%`]
@@ -119,10 +119,13 @@ router.post('/transactions', requireAccountant, async (req, res) => {
     const row = await db.get(
       `INSERT INTO acct_transactions
          (date,amount,type,description,account_type,cost_type,category,
+          subcategory,detail_category,counterparty,counterparty_no,has_receipt,
           receipt_no,receipt_id,account_verified,approved,reimbursable,is_asset,source,note,created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'manual',$14,$15) RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'manual',$19,$20) RETURNING *`,
       [d.date, d.amount, d.type, d.description, d.account_type, d.cost_type,
-       d.category, d.receipt_no, d.receipt_id || null,
+       d.category, d.subcategory||null, d.detail_category||null,
+       d.counterparty||null, d.counterparty_no||null, d.has_receipt||'N',
+       d.receipt_no, d.receipt_id || null,
        d.account_verified ?? false, d.approved ?? false, d.reimbursable,
        d.type === 'expense' ? (d.is_asset ?? false) : false,
        d.note, req.user.id]
@@ -149,10 +152,14 @@ router.put('/transactions/:id', requireAccountant, async (req, res) => {
     if (d.date && d.date < '2026-05-14') d.reimbursable = false;
     const row = await db.get(
       `UPDATE acct_transactions SET date=$1,amount=$2,description=$3,account_type=$4,
-       cost_type=$5,category=$6,account_verified=$7,approved=$8,reimbursable=$9,is_asset=$10,note=$11,updated_at=NOW()
-       WHERE id=$12 RETURNING *`,
+       cost_type=$5,category=$6,subcategory=$7,detail_category=$8,
+       counterparty=$9,counterparty_no=$10,has_receipt=$11,
+       account_verified=$12,approved=$13,reimbursable=$14,is_asset=$15,note=$16,updated_at=NOW()
+       WHERE id=$17 RETURNING *`,
       [d.date,d.amount,d.description,d.account_type,d.cost_type,
-       d.category,d.account_verified,d.approved,d.reimbursable,
+       d.category,d.subcategory||null,d.detail_category||null,
+       d.counterparty||null,d.counterparty_no||null,d.has_receipt||'N',
+       d.account_verified,d.approved,d.reimbursable,
        d.type === 'expense' ? (d.is_asset ?? false) : false,
        d.note,req.params.id]
     );
@@ -230,7 +237,7 @@ router.get('/reimbursement-sim', requireAccountingView, async (req, res) => {
     const pct = parseFloat(req.query.vote_pct || 0);
     const r = await db.get(
       `SELECT COALESCE(SUM(amount),0) t FROM acct_transactions
-       WHERE type='expense' AND cost_type='election_cost' AND reimbursable=true`
+       WHERE type='expense' AND cost_type='선거비용' AND reimbursable=true`
     );
     const total = parseInt(r.t);
     let amount = 0, rate = '미보전';
