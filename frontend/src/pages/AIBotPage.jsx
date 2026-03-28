@@ -35,7 +35,7 @@ function renderText(text) {
 
 export default function AIBotPage() {
   const user = useAuthStore(s => s.user);
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = ['admin', 'accountant'].includes(user?.role);
   const [tab, setTab] = useState('chat'); // chat | calc | knowledge
   const [messages, setMessages] = useState([{
     role:'assistant',
