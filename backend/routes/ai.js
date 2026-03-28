@@ -107,6 +107,18 @@ router.post('/knowledge', requireAdmin, upload.single('file'), async (req, res) 
   }
 });
 
+// GET /api/v1/ai/knowledge/:filename — 지식파일 내용 조회 (관리자)
+router.get('/knowledge/:filename', requireAdmin, (req, res) => {
+  try {
+    const filePath = path.join(KNOWLEDGE_DIR, path.basename(req.params.filename));
+    if (!fs.existsSync(filePath)) return res.status(404).json({ success: false, message: '파일 없음' });
+    const content = fs.readFileSync(filePath, 'utf-8');
+    res.json({ success: true, data: { name: req.params.filename, content } });
+  } catch (err) {
+    res.status(500).json({ success: false, message: '조회 실패' });
+  }
+});
+
 // DELETE /api/v1/ai/knowledge/:filename — 지식파일 삭제 (관리자)
 router.delete('/knowledge/:filename', requireAdmin, (req, res) => {
   try {

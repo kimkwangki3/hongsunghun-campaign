@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { api } from '../utils/api';
+import { useAuthStore } from '../store/authStore';
 
 const LIMIT = 52289440;
 const ELECTION_DATE = new Date('2026-06-03');
@@ -33,7 +34,9 @@ function renderText(text) {
 }
 
 export default function AIBotPage() {
-  const [tab, setTab] = useState('chat'); // chat | calc
+  const user = useAuthStore(s => s.user);
+  const isAdmin = user?.role === 'admin';
+  const [tab, setTab] = useState('chat'); // chat | calc | knowledge
   const [messages, setMessages] = useState([{
     role:'assistant',
     content:`안녕하세요! **홍성훈 캠프 AI 법무봇**입니다.\n\n순천시 제7선거구 기준으로 **선거법·회계처리·정치자금**에 관한 질문에 답변드립니다.\n\n아래 빠른 질문을 눌러보거나 직접 질문해 주세요.`
@@ -43,6 +46,60 @@ export default function AIBotPage() {
   const [spend, setSpend] = useState('');
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
+
+  // 지식관리
+  const [knowledgeFiles, setKnowledgeFiles] = useState([]);
+  const [knowledgeLoading, setKnowledgeLoading] = useState(false);
+  const [viewFile, setViewFile] = useState(null); // { name, content }
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const loadKnowledge = useCallback(async () => {
+    setKnowledgeLoading(true);
+    try {
+      const r = await api.get('/ai/knowledge');
+      setKnowledgeFiles(r.data.data || []);
+    } catch { setKnowledgeFiles([]); }
+    finally { setKnowledgeLoading(false); }
+  }, []);
+
+  useEffect(() => {
+    if (tab === 'knowledge' && isAdmin) loadKnowledge();
+  }, [tab, isAdmin, loadKnowledge]);
+
+  async function handleUpload(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      const r = await api.post('/ai/knowledge', fd);
+      alert(`✅ 업로드 완료: ${r.data.data.name} (${r.data.data.size.toLocaleString()}자)`);
+      loadKnowledge();
+    } catch (err) {
+      alert('❌ ' + (err.response?.data?.message || '업로드 실패'));
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  }
+
+  async function handleDeleteKnowledge(name) {
+    if (!window.confirm(`"${name}" 파일을 삭제하시겠습니까?`)) return;
+    try {
+      await api.delete(`/ai/knowledge/${encodeURIComponent(name)}`);
+      loadKnowledge();
+      if (viewFile?.name === name) setViewFile(null);
+    } catch { alert('삭제 실패'); }
+  }
+
+  async function handleViewFile(name) {
+    try {
+      const r = await api.get(`/ai/knowledge/${encodeURIComponent(name)}`);
+      setViewFile(r.data.data);
+    } catch { alert('파일 조회 실패'); }
+  }
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior:'smooth' });
@@ -114,7 +171,7 @@ export default function AIBotPage() {
 
         {/* 탭 */}
         <div style={{ display:'flex', gap:6 }}>
-          {[['chat','💬 법무봇'], ['calc','💵 비용계산']].map(([t,l]) => (
+          {[['chat','💬 법무봇'], ['calc','💵 비용계산'], ...(isAdmin ? [['knowledge','📚 지식관리']] : [])].map(([t,l]) => (
             <button key={t} onClick={() => setTab(t)} style={{
               flex:1, padding:'6px 0', fontSize:11, fontWeight:700,
               background: tab===t ? 'linear-gradient(135deg,#1e6bff,#0047cc)' : '#1a2236',
@@ -308,6 +365,135 @@ export default function AIBotPage() {
             * 1/200 기준: 261,447원<br/>
             * 15% 이상 득표 시 전액 보전<br/>
             * 10~15%: 50% 보전 / 10% 미만: 미보전
+          </div>
+        </div>
+      )}
+
+      {/* ── 지식관리 탭 (관리자 전용) ── */}
+      {tab === 'knowledge' && isAdmin && (
+        <div style={{ flex:1, overflowY:'auto', padding:16 }}>
+          {/* 헤더 + 업로드 */}
+          <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
+            <div>
+              <div style={{ fontSize:14, fontWeight:700, color:'#e8edf5' }}>📚 법무봇 지식베이스</div>
+              <div style={{ fontSize:11, color:'#8896b3', marginTop:2 }}>업로드된 파일이 법무봇의 답변 근거가 됩니다</div>
+            </div>
+            <div style={{ display:'flex', gap:6 }}>
+              <button onClick={loadKnowledge} style={{
+                padding:'7px 12px', fontSize:11, fontWeight:600,
+                background:'#1a2236', color:'#8896b3', border:'1px solid #1e2d45',
+                borderRadius:8, cursor:'pointer'
+              }}>🔄</button>
+              <button onClick={() => fileInputRef.current?.click()} disabled={uploading} style={{
+                padding:'7px 14px', fontSize:11, fontWeight:700,
+                background:'linear-gradient(135deg,#1e6bff,#0047cc)', color:'#fff',
+                border:'none', borderRadius:8, cursor: uploading ? 'not-allowed' : 'pointer',
+                opacity: uploading ? 0.6 : 1
+              }}>{uploading ? '업로드중...' : '📤 파일 업로드'}</button>
+              <input ref={fileInputRef} type="file" accept=".pdf,.docx,.doc,.md,.txt" onChange={handleUpload} style={{ display:'none' }} />
+            </div>
+          </div>
+
+          {/* 지원 형식 안내 */}
+          <div style={{
+            background:'#111827', border:'1px solid #1e2d45', borderRadius:10,
+            padding:'10px 14px', marginBottom:16, fontSize:11, color:'#8896b3'
+          }}>
+            지원 형식: <strong style={{ color:'#e8edf5' }}>PDF, DOCX, DOC, MD, TXT</strong> (최대 20MB)
+            &nbsp;|&nbsp; 업로드 시 자동으로 마크다운 변환되어 법무봇 지식에 반영됩니다
+          </div>
+
+          {/* 파일 목록 */}
+          {knowledgeLoading ? (
+            <div style={{ textAlign:'center', color:'#8896b3', padding:40, fontSize:13 }}>불러오는 중...</div>
+          ) : knowledgeFiles.length === 0 ? (
+            <div style={{ textAlign:'center', color:'#4a5878', padding:60, fontSize:13 }}>
+              <div style={{ fontSize:40, marginBottom:8 }}>📭</div>
+              등록된 지식 파일이 없습니다<br />
+              <span style={{ fontSize:11 }}>PDF, DOCX, TXT 파일을 업로드하면 법무봇이 학습합니다</span>
+            </div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              {knowledgeFiles.map(f => (
+                <div key={f.name} style={{
+                  background:'#111827', border:'1px solid #1e2d45', borderRadius:10,
+                  padding:'12px 14px', display:'flex', alignItems:'center', gap:10
+                }}>
+                  <div style={{
+                    width:36, height:36, borderRadius:8, flexShrink:0,
+                    background:'linear-gradient(135deg,#1e3a5f,#1a2236)',
+                    display:'flex', alignItems:'center', justifyContent:'center', fontSize:16
+                  }}>📄</div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontSize:13, fontWeight:700, color:'#e8edf5', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{f.name}</div>
+                    <div style={{ fontSize:10, color:'#8896b3', marginTop:2 }}>
+                      {(f.size / 1024).toFixed(1)}KB · {new Date(f.updated).toLocaleDateString('ko-KR')} 수정
+                    </div>
+                  </div>
+                  <button onClick={() => handleViewFile(f.name)} style={{
+                    padding:'5px 10px', fontSize:10, fontWeight:600,
+                    background:'#1a2236', color:'#8896b3', border:'1px solid #1e2d45',
+                    borderRadius:6, cursor:'pointer'
+                  }}>👁️ 보기</button>
+                  <button onClick={() => handleDeleteKnowledge(f.name)} style={{
+                    padding:'5px 10px', fontSize:10, fontWeight:600,
+                    background:'#2a0a0a', color:'#f87171', border:'1px solid #f8717144',
+                    borderRadius:6, cursor:'pointer'
+                  }}>🗑️</button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* 시스템 프롬프트 스킬 안내 */}
+          <div style={{
+            marginTop:20, background:'#0d1117', border:'1px solid #1e2d45',
+            borderRadius:10, padding:14
+          }}>
+            <div style={{ fontSize:12, fontWeight:700, color:'#e8edf5', marginBottom:8 }}>🤖 법무봇 내장 스킬</div>
+            <div style={{ fontSize:11, color:'#8896b3', lineHeight:1.8 }}>
+              <div style={{ display:'flex', gap:6, alignItems:'center', marginBottom:4 }}>
+                <span style={{ background:'#1e6bff33', color:'#5b9aff', padding:'1px 8px', borderRadius:4, fontSize:10, fontWeight:700 }}>기본</span>
+                선거법·정치자금법 질의응답
+              </div>
+              <div style={{ display:'flex', gap:6, alignItems:'center', marginBottom:4 }}>
+                <span style={{ background:'#10b98133', color:'#10b981', padding:'1px 8px', borderRadius:4, fontSize:10, fontWeight:700 }}>수치</span>
+                순천시 제7선거구 비용제한액·세대수·일정 자동 반영
+              </div>
+              <div style={{ display:'flex', gap:6, alignItems:'center', marginBottom:4 }}>
+                <span style={{ background:'#f59e0b33', color:'#f59e0b', padding:'1px 8px', borderRadius:4, fontSize:10, fontWeight:700 }}>판단</span>
+                홍보활동 적법성 판단 (주체·방법·시기별 분류)
+              </div>
+              <div style={{ display:'flex', gap:6, alignItems:'center', marginBottom:4 }}>
+                <span style={{ background:'#8b5cf633', color:'#a78bfa', padding:'1px 8px', borderRadius:4, fontSize:10, fontWeight:700 }}>실비</span>
+                선거사무관계자 수당·실비 기준 계산
+              </div>
+              <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+                <span style={{ background:'#ef444433', color:'#ef4444', padding:'1px 8px', borderRadius:4, fontSize:10, fontWeight:700 }}>지식</span>
+                위 업로드 파일({knowledgeFiles.length}개) 기반 답변
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── 파일 내용 보기 모달 ── */}
+      {viewFile && (
+        <div style={{ position:'fixed', inset:0, background:'rgba(0,0,0,0.85)', display:'flex', alignItems:'center', justifyContent:'center', zIndex:2000 }}>
+          <div style={{ background:'#111827', borderRadius:16, width:'95%', maxWidth:600, maxHeight:'85vh', display:'flex', flexDirection:'column', overflow:'hidden' }}>
+            <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', padding:'14px 18px', borderBottom:'1px solid #1e2d45', flexShrink:0 }}>
+              <div style={{ fontSize:13, fontWeight:700, color:'#e8edf5', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>📄 {viewFile.name}</div>
+              <button onClick={() => setViewFile(null)} style={{
+                background:'#1a2236', border:'1px solid #1e2d45', borderRadius:6,
+                color:'#8896b3', padding:'4px 10px', fontSize:11, cursor:'pointer'
+              }}>닫기</button>
+            </div>
+            <div style={{ flex:1, overflowY:'auto', padding:'14px 18px' }}>
+              <pre style={{
+                fontSize:12, color:'#c9d1d9', lineHeight:1.7, whiteSpace:'pre-wrap', wordBreak:'break-word',
+                fontFamily:"'Noto Sans KR', monospace", margin:0
+              }}>{viewFile.content}</pre>
+            </div>
           </div>
         </div>
       )}
