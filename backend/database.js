@@ -23,6 +23,13 @@ const db = {
 };
 
 async function initDB() {
+  // 기존 DB에 다른 앱의 테이블이 있으면 DROP 후 재생성
+  const chk = await db.get(`SELECT column_name FROM information_schema.columns WHERE table_name='users' AND column_name='name'`);
+  if (!chk) {
+    console.log('[DB] 기존 users 테이블 구조 불일치 — 관련 테이블 재생성');
+    await db.run(`DROP TABLE IF EXISTS message_reads, room_members, device_tokens, messages, rooms, notifications, schedules, users CASCADE`);
+  }
+
   await db.run(`
     -- 사용자
     CREATE TABLE IF NOT EXISTS users (
