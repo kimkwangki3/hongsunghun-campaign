@@ -136,8 +136,8 @@ export default function Layout() {
     ...(['admin','accountant'].includes(user?.role) ? [
       { path:'/accounting',    label:'회계',   icon: LedgerIcon,  badge: 0 },
       { path:'/sponsor',       label:'후원회', icon: LedgerIcon,  badge: 0 },
-      { path:'/camp-ledger',   label:'실비',   icon: LedgerIcon,  badge: 0 },
     ] : []),
+    { path:'/camp-ledger',   label:'실비',   icon: LedgerIcon,  badge: 0 },
     ...(user?.role === 'admin' ? [{ path:'/admin', label:'관리', icon: GearIcon, badge: 0 }] : []),
   ];
 

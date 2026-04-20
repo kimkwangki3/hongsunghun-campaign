@@ -28,7 +28,7 @@ const VALID_TYPES = ['bank', 'kk', 'sy'];
 const TYPE_LABELS = { bank: '후통장', kk: '후현금(KK)', sy: '후현금(SY)' };
 
 // ── 요약 (탭별) ──────────────────────────────────────────
-router.get('/summary/:ledgerType', requireAccountant, async (req, res) => {
+router.get('/summary/:ledgerType', async (req, res) => {
   const lt = req.params.ledgerType;
   if (!VALID_TYPES.includes(lt)) return res.status(400).json({ success: false, message: '잘못된 장부 유형' });
   try {
@@ -43,7 +43,7 @@ router.get('/summary/:ledgerType', requireAccountant, async (req, res) => {
 });
 
 // ── 목록 조회 ────────────────────────────────────────────
-router.get('/:ledgerType', requireAccountant, async (req, res) => {
+router.get('/:ledgerType', async (req, res) => {
   const lt = req.params.ledgerType;
   if (!VALID_TYPES.includes(lt)) return res.status(400).json({ success: false, message: '잘못된 장부 유형' });
   try {

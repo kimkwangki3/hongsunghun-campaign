@@ -93,11 +93,6 @@ export default function CampLedgerPage() {
 
   const baseUrl = (api.defaults?.baseURL || '').replace(/\/api\/v1$/, '');
 
-  if (!isAccountant) return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100%', color:S.sub, fontSize:14 }}>
-      회계 권한이 필요합니다
-    </div>
-  );
 
   return (
     <div style={{ display:'flex', flexDirection:'column', height:'100%', background:S.bg, overflow:'hidden' }}>
