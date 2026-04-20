@@ -10,7 +10,7 @@ const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const { initDB, db } = require('./database');
 const { verifyToken, verifyToken_raw } = require('./middleware/auth');
-const { sendPush } = require('./utils/fcm');
+const { sendPush, setDb: setFcmDb } = require('./utils/fcm');
 const { encrypt, decrypt } = require('./utils/encryption');
 const { startScheduler } = require('./utils/scheduler');
 const { v4: uuidv4 } = require('uuid');
@@ -155,7 +155,7 @@ io.on('connection', async (socket) => {
           title: `💬 ${roomInfo?.name || '새 메시지'}`,
           body: `${sender.name}: ${content.substring(0, 50)}`,
           data: { type: 'chat', roomId }
-        }).catch(() => {});
+        }).catch(e => console.error('[FCM 채팅알림]', e.message));
       }
     } catch (err) {
       console.error('메시지 전송 오류:', err);
@@ -298,6 +298,7 @@ const PORT = process.env.PORT || 3001;
 async function main() {
   try {
     await initDB();
+    setFcmDb(db); // FCM에 DB 참조 전달 (무효 토큰 자동 정리용)
   } catch (e) {
     console.error('⚠️ DB 초기화 일부 실패 (서버는 시작합니다):', e.message);
   }
