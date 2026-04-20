@@ -323,12 +323,14 @@ async function initDB() {
   await safeIndex(`CREATE INDEX IF NOT EXISTS idx_message_reads_msg ON message_reads(message_id)`);
   await safeIndex(`CREATE INDEX IF NOT EXISTS idx_device_tokens_user ON device_tokens(user_id)`);
 
-  // 선거 핵심 일정 + 기본 채팅방 항상 보장 (ON CONFLICT DO NOTHING으로 중복 안전)
-  await seedElectionSchedules();
+  // 선거 핵심 일정 + 기본 채팅방 항상 보장 (기존 DB 구조 다를 수 있으므로 안전 처리)
+  try { await seedElectionSchedules(); } catch (e) { console.warn('[Seed 스킵]', e.message); }
 
   // 채팅방 이름 마이그레이션
-  await db.run(`UPDATE rooms SET name = '홍캠프 보안 채팅방', description = '홍성훈 캠프 전용 보안 채팅방' WHERE id = 'room_general'`);
-  await db.run(`UPDATE rooms SET name = '📢 공지', description = '캠프 공지 채널' WHERE id = 'room_announce'`);
+  try {
+    await db.run(`UPDATE rooms SET name = '홍캠프 보안 채팅방', description = '홍성훈 캠프 전용 보안 채팅방' WHERE id = 'room_general'`);
+    await db.run(`UPDATE rooms SET name = '📢 공지', description = '캠프 공지 채널' WHERE id = 'room_announce'`);
+  } catch (e) { console.warn('[채팅방 마이그레이션 스킵]', e.message); }
 
   console.log('✅ DB 초기화 완료');
 }
