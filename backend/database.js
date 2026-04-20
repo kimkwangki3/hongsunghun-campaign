@@ -313,14 +313,15 @@ async function initDB() {
   `);
   await db.run(`CREATE INDEX IF NOT EXISTS idx_camp_ledger_type ON camp_ledger(ledger_type, date DESC)`);
 
-  // 성능 인덱스 (없으면 생성)
-  await db.run(`CREATE INDEX IF NOT EXISTS idx_room_members_user ON room_members(user_id)`);
-  await db.run(`CREATE INDEX IF NOT EXISTS idx_room_members_room ON room_members(room_id)`);
-  await db.run(`CREATE INDEX IF NOT EXISTS idx_messages_room_time ON messages(room_id, created_at DESC)`);
-  await db.run(`CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id)`);
-  await db.run(`CREATE INDEX IF NOT EXISTS idx_message_reads_user ON message_reads(user_id)`);
-  await db.run(`CREATE INDEX IF NOT EXISTS idx_message_reads_msg ON message_reads(message_id)`);
-  await db.run(`CREATE INDEX IF NOT EXISTS idx_device_tokens_user ON device_tokens(user_id)`);
+  // 성능 인덱스 (없으면 생성, 실패해도 서버 기동 차단 안 함)
+  const safeIndex = async (sql) => { try { await db.run(sql); } catch (e) { console.warn('[DB 인덱스 스킵]', e.message); } };
+  await safeIndex(`CREATE INDEX IF NOT EXISTS idx_room_members_user ON room_members(user_id)`);
+  await safeIndex(`CREATE INDEX IF NOT EXISTS idx_room_members_room ON room_members(room_id)`);
+  await safeIndex(`CREATE INDEX IF NOT EXISTS idx_messages_room_time ON messages(room_id, created_at DESC)`);
+  await safeIndex(`CREATE INDEX IF NOT EXISTS idx_messages_sender ON messages(sender_id)`);
+  await safeIndex(`CREATE INDEX IF NOT EXISTS idx_message_reads_user ON message_reads(user_id)`);
+  await safeIndex(`CREATE INDEX IF NOT EXISTS idx_message_reads_msg ON message_reads(message_id)`);
+  await safeIndex(`CREATE INDEX IF NOT EXISTS idx_device_tokens_user ON device_tokens(user_id)`);
 
   // 선거 핵심 일정 + 기본 채팅방 항상 보장 (ON CONFLICT DO NOTHING으로 중복 안전)
   await seedElectionSchedules();
