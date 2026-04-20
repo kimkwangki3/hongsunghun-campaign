@@ -296,8 +296,12 @@ app.use((err, req, res, next) => {
 const PORT = process.env.PORT || 3001;
 
 async function main() {
-  await initDB();
-  startScheduler(io);
+  try {
+    await initDB();
+  } catch (e) {
+    console.error('⚠️ DB 초기화 일부 실패 (서버는 시작합니다):', e.message);
+  }
+  try { startScheduler(io); } catch (e) { console.warn('⚠️ 스케줄러 시작 실패:', e.message); }
   server.listen(PORT, () => {
     console.log(`🚀 홍성훈 캠프 서버 실행 중: http://localhost:${PORT}`);
   });
