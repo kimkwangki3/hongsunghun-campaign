@@ -89,6 +89,37 @@ router.post('/:ledgerType', upload.single('receipt'), async (req, res) => {
   } catch (e) { res.status(500).json({ success: false, message: e.message }); }
 });
 
+// ── 수정 (본인 또는 관리자) ───────────────────────────────
+router.put('/:ledgerType/:id', upload.single('receipt'), async (req, res) => {
+  const lt = req.params.ledgerType;
+  if (!VALID_TYPES.includes(lt)) return res.status(400).json({ success: false, message: '잘못된 장부 유형' });
+  try {
+    const row = await db.get(`SELECT * FROM camp_ledger WHERE id=$1 AND ledger_type=$2`, [req.params.id, lt]);
+    if (!row) return res.status(404).json({ success: false, message: '항목 없음' });
+    if (row.created_by !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: '본인이 등록한 항목만 수정할 수 있습니다' });
+    }
+    const d = req.body;
+    let receiptPath = row.receipt_path;
+    if (req.file) {
+      // 기존 영수증 삭제
+      if (row.receipt_path) {
+        const old = path.join(__dirname, '../public', row.receipt_path);
+        if (fs.existsSync(old)) fs.unlinkSync(old);
+      }
+      receiptPath = `/camp-receipts/${req.file.filename}`;
+    }
+    const updated = await db.get(
+      `UPDATE camp_ledger SET date=$1, type=$2, amount=$3, description=$4, has_receipt=$5, receipt_path=$6, note=$7
+       WHERE id=$8 RETURNING *`,
+      [d.date || row.date, d.type || row.type, parseInt(d.amount) || row.amount,
+       d.description ?? row.description, req.file ? true : (d.has_receipt === 'true' || row.has_receipt),
+       receiptPath, d.note ?? row.note, req.params.id]
+    );
+    res.json({ success: true, data: updated });
+  } catch (e) { res.status(500).json({ success: false, message: e.message }); }
+});
+
 // ── 삭제 ─────────────────────────────────────────────────
 router.delete('/:ledgerType/:id', async (req, res) => {
   try {

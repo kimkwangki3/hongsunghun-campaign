@@ -25,6 +25,7 @@ export default function CampLedgerPage() {
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState('');
   const [showForm, setShowForm] = useState(false);
+  const [editId, setEditId] = useState(null); // 수정 모드 시 항목 ID
   const [previewImg, setPreviewImg] = useState(null);
 
   // 입력 폼
@@ -72,14 +73,19 @@ export default function CampLedgerPage() {
       fd.append('has_receipt', receiptFile ? 'true' : 'false');
       if (receiptFile) fd.append('receipt', receiptFile);
 
-      await api.post(`${API}/${tab}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
-      toast('등록 완료');
+      if (editId) {
+        await api.put(`${API}/${tab}/${editId}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+        toast('수정 완료');
+      } else {
+        await api.post(`${API}/${tab}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+        toast('등록 완료');
+      }
       setForm({ date: new Date().toISOString().slice(0,10), type: 'expense', amount: '', description: '', note: '' });
-      setReceiptFile(null); setReceiptPreview(null);
+      setReceiptFile(null); setReceiptPreview(null); setEditId(null);
       if (fileRef.current) fileRef.current.value = '';
       setShowForm(false);
       load();
-    } catch (e) { toast('등록 실패: ' + (e.response?.data?.message || e.message)); }
+    } catch (e) { toast((editId ? '수정' : '등록') + ' 실패: ' + (e.response?.data?.message || e.message)); }
   };
 
   const handleDelete = async (id) => {
@@ -99,7 +105,7 @@ export default function CampLedgerPage() {
       <div style={{ background:S.surface, borderBottom:S.border, padding:'12px 16px', flexShrink:0 }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
           <div style={{ fontSize:15, fontWeight:700, color:S.text }}>💰 캠프 실비 장부</div>
-          <button onClick={() => setShowForm(!showForm)} style={{
+          <button onClick={() => { setShowForm(!showForm); if (showForm) { setEditId(null); setForm({ date: new Date().toISOString().slice(0,10), type: 'expense', amount: '', description: '', note: '' }); setReceiptFile(null); setReceiptPreview(null); } }} style={{
             padding:'7px 14px', fontSize:12, fontWeight:700, borderRadius:8, border:'none', cursor:'pointer',
             background: showForm ? S.red : S.accent, color:'#fff',
           }}>{showForm ? '취소' : '+ 입력'}</button>
@@ -186,7 +192,7 @@ export default function CampLedgerPage() {
             <button onClick={handleSubmit} style={{
               padding:'11px 0', fontSize:13, fontWeight:700, borderRadius:10, border:'none', cursor:'pointer',
               background:'linear-gradient(135deg,#1e6bff,#0047cc)', color:'#fff', marginTop:4,
-            }}>등록하기</button>
+            }}>{editId ? '수정하기' : '등록하기'}</button>
           </div>
         </div>
       )}
@@ -239,11 +245,21 @@ export default function CampLedgerPage() {
               }}>{r.type === 'income' ? '+' : '-'}{r.amount.toLocaleString()}</div>
             </div>
 
-            {/* 삭제 — 본인 등록 항목 또는 관리자만 */}
+            {/* 수정/삭제 — 본인 등록 항목 또는 관리자만 */}
             {(r.created_by === user?.id || user?.role === 'admin') && (
-              <button onClick={() => handleDelete(r.id)} style={{
-                background:'none', border:'none', color:S.muted, cursor:'pointer', fontSize:14, padding:4, flexShrink:0,
-              }}>🗑️</button>
+              <div style={{ display:'flex', flexDirection:'column', gap:2, flexShrink:0 }}>
+                <button onClick={() => {
+                  setEditId(r.id);
+                  setForm({ date: r.date, type: r.type, amount: String(r.amount), description: r.description || '', note: r.note || '' });
+                  setReceiptFile(null); setReceiptPreview(null);
+                  setShowForm(true);
+                }} style={{
+                  background:'none', border:'none', color:S.sub, cursor:'pointer', fontSize:12, padding:2,
+                }}>✏️</button>
+                <button onClick={() => handleDelete(r.id)} style={{
+                  background:'none', border:'none', color:S.muted, cursor:'pointer', fontSize:12, padding:2,
+                }}>🗑️</button>
+              </div>
             )}
           </div>
         ))}
