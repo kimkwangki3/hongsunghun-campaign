@@ -276,6 +276,7 @@ app.use('/api/v1/notification', verifyToken, require('./routes/notification'));
 app.use('/api/v1/ai', verifyToken, require('./routes/ai'));
 app.use('/api/v1/accounting', verifyToken, require('./routes/accounting'));
 app.use('/api/v1/sponsor',    verifyToken, require('./routes/sponsor'));
+app.use('/api/v1/camp-ledger', verifyToken, require('./routes/campLedger'));
 
 // Health check
 app.get('/health', (_, res) => res.json({ status: 'ok', time: new Date() }));

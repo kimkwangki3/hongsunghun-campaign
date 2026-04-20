@@ -294,6 +294,25 @@ async function initDB() {
   await db.run(`ALTER TABLE acct_sponsor_expense ADD COLUMN IF NOT EXISTS transfer_purpose VARCHAR(50) DEFAULT '선거자금이체'`);
   // ─────────────────────────────────────────────────────────────────────
 
+  // ── 캠프 실비 장부 (후통장 / 후현금KK / 후현금SY) ─────────────────
+  await db.run(`
+    CREATE TABLE IF NOT EXISTS camp_ledger (
+      id          SERIAL PRIMARY KEY,
+      ledger_type VARCHAR(10) NOT NULL CHECK (ledger_type IN ('bank','kk','sy')),
+      date        DATE NOT NULL,
+      type        VARCHAR(10) NOT NULL CHECK (type IN ('income','expense')),
+      amount      INTEGER NOT NULL,
+      description TEXT,
+      has_receipt  BOOLEAN DEFAULT FALSE,
+      receipt_path TEXT,
+      receipt_url  TEXT,
+      note        TEXT,
+      created_by  TEXT REFERENCES users(id),
+      created_at  TIMESTAMP DEFAULT NOW()
+    )
+  `);
+  await db.run(`CREATE INDEX IF NOT EXISTS idx_camp_ledger_type ON camp_ledger(ledger_type, date DESC)`);
+
   // 성능 인덱스 (없으면 생성)
   await db.run(`CREATE INDEX IF NOT EXISTS idx_room_members_user ON room_members(user_id)`);
   await db.run(`CREATE INDEX IF NOT EXISTS idx_room_members_room ON room_members(room_id)`);
