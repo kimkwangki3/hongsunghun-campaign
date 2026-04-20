@@ -18,7 +18,6 @@ const API = '/camp-ledger';
 
 export default function CampLedgerPage() {
   const user = useAuthStore(s => s.user);
-  const isAccountant = ['admin','accountant'].includes(user?.role);
 
   const [tab, setTab] = useState('bank');
   const [rows, setRows] = useState([]);
@@ -100,12 +99,10 @@ export default function CampLedgerPage() {
       <div style={{ background:S.surface, borderBottom:S.border, padding:'12px 16px', flexShrink:0 }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:10 }}>
           <div style={{ fontSize:15, fontWeight:700, color:S.text }}>💰 캠프 실비 장부</div>
-          {isAccountant && (
-            <button onClick={() => setShowForm(!showForm)} style={{
-              padding:'7px 14px', fontSize:12, fontWeight:700, borderRadius:8, border:'none', cursor:'pointer',
-              background: showForm ? S.red : S.accent, color:'#fff',
-            }}>{showForm ? '취소' : '+ 입력'}</button>
-          )}
+          <button onClick={() => setShowForm(!showForm)} style={{
+            padding:'7px 14px', fontSize:12, fontWeight:700, borderRadius:8, border:'none', cursor:'pointer',
+            background: showForm ? S.red : S.accent, color:'#fff',
+          }}>{showForm ? '취소' : '+ 입력'}</button>
         </div>
 
         {/* 탭 */}
@@ -230,7 +227,7 @@ export default function CampLedgerPage() {
                 )}
               </div>
               <div style={{ fontSize:10, color:S.muted }}>
-                {r.date} · {r.created_by_name || ''}{r.note ? ` · ${r.note}` : ''}
+                {r.date} · <span style={{ color:'#8896b3', fontWeight:600 }}>{r.created_by_name || '알수없음'}</span>{r.note ? ` · ${r.note}` : ''}
               </div>
             </div>
 
@@ -242,8 +239,8 @@ export default function CampLedgerPage() {
               }}>{r.type === 'income' ? '+' : '-'}{r.amount.toLocaleString()}</div>
             </div>
 
-            {/* 삭제 */}
-            {isAccountant && (
+            {/* 삭제 — 본인 등록 항목 또는 관리자만 */}
+            {(r.created_by === user?.id || user?.role === 'admin') && (
               <button onClick={() => handleDelete(r.id)} style={{
                 background:'none', border:'none', color:S.muted, cursor:'pointer', fontSize:14, padding:4, flexShrink:0,
               }}>🗑️</button>

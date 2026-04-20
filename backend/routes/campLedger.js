@@ -4,7 +4,7 @@ const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
 const { db } = require('../database');
-const { requireAccountant } = require('../middleware/auth');
+// 권한: 조회·등록은 전체, 삭제는 본인+관리자 (라우트 내 체크)
 const { sendPush } = require('../utils/fcm');
 
 // 영수증 업로드 설정
@@ -58,7 +58,7 @@ router.get('/:ledgerType', async (req, res) => {
 });
 
 // ── 등록 ─────────────────────────────────────────────────
-router.post('/:ledgerType', requireAccountant, upload.single('receipt'), async (req, res) => {
+router.post('/:ledgerType', upload.single('receipt'), async (req, res) => {
   const lt = req.params.ledgerType;
   if (!VALID_TYPES.includes(lt)) return res.status(400).json({ success: false, message: '잘못된 장부 유형' });
   try {
@@ -90,10 +90,14 @@ router.post('/:ledgerType', requireAccountant, upload.single('receipt'), async (
 });
 
 // ── 삭제 ─────────────────────────────────────────────────
-router.delete('/:ledgerType/:id', requireAccountant, async (req, res) => {
+router.delete('/:ledgerType/:id', async (req, res) => {
   try {
     const row = await db.get(`SELECT * FROM camp_ledger WHERE id=$1 AND ledger_type=$2`, [req.params.id, req.params.ledgerType]);
     if (!row) return res.status(404).json({ success: false, message: '항목 없음' });
+    // 본인 등록 항목 또는 관리자만 삭제 가능
+    if (row.created_by !== req.user.id && req.user.role !== 'admin') {
+      return res.status(403).json({ success: false, message: '본인이 등록한 항목만 삭제할 수 있습니다' });
+    }
     // 영수증 파일 삭제
     if (row.receipt_path) {
       const filePath = path.join(__dirname, '../public', row.receipt_path);
