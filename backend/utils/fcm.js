@@ -44,9 +44,36 @@ async function sendPush(tokens, { title, body, data = {} }) {
   const payload = {
     notification: { title, body },
     data: Object.fromEntries(Object.entries(data).map(([k, v]) => [k, String(v)])),
-    android: { priority: 'high', notification: { sound: 'default', channelId: 'campaign' } },
-    apns: { payload: { aps: { sound: 'default', badge: 1 } } },
-    webpush: { notification: { icon: '/icons/icon-192.png', badge: '/icons/badge-72.png' } }
+    android: {
+      priority: 'high',
+      notification: { sound: 'default', channelId: 'campaign' }
+    },
+    apns: {
+      headers: {
+        'apns-priority': '10',
+        'apns-push-type': 'alert'
+      },
+      payload: {
+        aps: {
+          sound: 'default',
+          badge: 1,
+          'mutable-content': 1,
+          'content-available': 1,
+          alert: { title, body }
+        }
+      }
+    },
+    webpush: {
+      headers: { 'Urgency': 'high', 'TTL': '86400' },
+      notification: {
+        title, body,
+        icon: '/icons/icon-192.png',
+        badge: '/icons/badge-72.png',
+        vibrate: [200, 100, 200],
+        requireInteraction: false
+      },
+      fcmOptions: { link: '/' }
+    }
   };
 
   try {

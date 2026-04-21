@@ -23,19 +23,44 @@ function getUrlFromData(data) {
 
 // 백그라운드(슬립) 메시지 수신
 messaging.onBackgroundMessage((payload) => {
-  const { title, body } = payload.notification || {};
+  const n = payload.notification || {};
   const data = payload.data || {};
-  if (!title) return;
+  const title = n.title || data.title || '홍캠프 알림';
+  const body  = n.body  || data.body  || '';
 
   self.registration.showNotification(title, {
     body,
     icon: '/icons/icon-192.png',
     badge: '/icons/badge-72.png',
     tag: data.type || 'general',
+    renotify: true,
     data: { url: getUrlFromData(data) },
     vibrate: [200, 100, 200],
     requireInteraction: data.type === 'urgent'
   });
+});
+
+// iOS PWA 호환: 순수 push 이벤트도 직접 처리 (Firebase가 못 받는 경우 대비)
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+  let payload;
+  try { payload = event.data.json(); } catch { payload = { notification: { title: '알림', body: event.data.text() } }; }
+  const n = payload.notification || {};
+  const data = payload.data || {};
+  const title = n.title || data.title || '홍캠프 알림';
+  const body  = n.body  || data.body  || '';
+
+  event.waitUntil(
+    self.registration.showNotification(title, {
+      body,
+      icon: '/icons/icon-192.png',
+      badge: '/icons/badge-72.png',
+      tag: data.type || 'general',
+      renotify: true,
+      data: { url: getUrlFromData(data) },
+      vibrate: [200, 100, 200]
+    })
+  );
 });
 
 // 알림 탭 → 해당 페이지로 이동

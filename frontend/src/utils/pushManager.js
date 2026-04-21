@@ -72,19 +72,58 @@ async function initWebPush() {
 
     // VitePWA가 이미 등록한 SW 사용 (SW 중복 충돌 방지)
     const swReg = await navigator.serviceWorker.ready;
-    const token = await getToken(messaging, {
-      vapidKey: VAPID_KEY,
-      serviceWorkerRegistration: swReg
-    });
 
-    if (token) {
-      await api.put('/auth/fcm-token', { token, platform: 'web' });
-      console.log('✅ 웹 FCM 토큰 등록 완료');
+    // 플랫폼 감지 (iOS PWA 구분)
+    const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent);
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches;
+    const platform = (isIOS && isStandalone) ? 'ios-pwa' : 'web';
+
+    async function registerToken() {
+      try {
+        const token = await getToken(messaging, {
+          vapidKey: VAPID_KEY,
+          serviceWorkerRegistration: swReg
+        });
+        if (token) {
+          const lastToken = localStorage.getItem('fcm-token');
+          const lastTime = parseInt(localStorage.getItem('fcm-token-time') || '0');
+          const dayMs = 24 * 60 * 60 * 1000;
+          // 토큰이 바뀌었거나 24시간 지났으면 서버에 재등록
+          if (token !== lastToken || Date.now() - lastTime > dayMs) {
+            await api.put('/auth/fcm-token', { token, platform });
+            localStorage.setItem('fcm-token', token);
+            localStorage.setItem('fcm-token-time', String(Date.now()));
+            console.log(`✅ FCM 토큰 등록/갱신 완료 (${platform})`);
+          } else {
+            console.log('ℹ️ FCM 토큰 변경 없음');
+          }
+        }
+      } catch (e) {
+        console.warn('FCM 토큰 등록 실패:', e.message);
+      }
     }
 
+    await registerToken();
+
+    // 주기적 토큰 갱신 (30분마다, 앱이 열려있을 때)
+    setInterval(registerToken, 30 * 60 * 1000);
+
+    // 페이지 가시성 변경 시 토큰 재등록 (앱이 백그라운드에서 포그라운드로 복귀할 때)
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') registerToken();
+    });
+
+    // 포그라운드 수신
     onMessage(messaging, ({ notification }) => {
-      if (notification?.title)
-        new Notification(notification.title, { body: notification.body, icon: '/icons/icon-192.png' });
+      if (notification?.title && swReg) {
+        // iOS PWA는 Notification API 대신 SW를 통해서만 표시 가능
+        swReg.showNotification(notification.title, {
+          body: notification.body,
+          icon: '/icons/icon-192.png',
+          badge: '/icons/badge-72.png',
+          vibrate: [200, 100, 200]
+        });
+      }
     });
 
   } catch (err) {
